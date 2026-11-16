@@ -1,6 +1,6 @@
 # 红尘客栈：Codex 接手入口
 
-当前本机整合分支为 `integrate-stage12-story`：已在现有 Stage12 上接入玩法分支、账本和新版三段流程。以根目录 `README.md` 与 `README_开始试玩.md` 的当前说明为准；下面及交付文档中“未合入玩法分支”描述的是原作者交付时状态。此整合使用官方交付归档及经哈希核验的 LFS 资源，未执行远端分支的 Git 历史合并，也未推送。
+当前整合分支为 `integrate-stage12-story`，已上传 GitHub：在现有 Stage12 上接入玩法分支、账本和新版三段流程。以根目录 `README.md` 与 `README_开始试玩.md` 的当前说明为准；下面及交付文档中“未合入玩法分支”描述的是原作者交付时状态。整合使用官方交付归档及经哈希核验的 LFS 资源，未执行交付分支的 Git 历史合并。最新独立试玩版为 `Builds/2026-11-17_v1/Windows/HongChenKeZhan.exe`；发布包放 Releases，不提交整个 Builds。
 
 `Stage12Integration.apply` 是一次性迁移工具，已完成，不要重复执行。不要重新生成场景或启用旧 `InnStairTraversal`，Stage12 已有连续楼梯碰撞。人物/战斗动画资源沿用原玩法分支；对白单独锁定现有自然站姿。
 

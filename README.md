@@ -10,15 +10,15 @@ Unity 3D 武侠动作 Demo，可编辑工程。本轮把 Stage12 客栈场景、
 | 本地分支 | `integrate-stage12-story` |
 | 编辑器 | Unity 6.3 LTS，`6000.3.25f1` |
 | 当前场景 | `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity` |
-| 最新试玩方式 | Unity Hub 添加本工程，打开当前场景，点击 Play，再选择“开始游戏” |
-| 本轮可执行文件 | **尚未打包**；历史 `Builds/` 中的 exe 不包含本轮更新 |
-| GitHub 状态 | **尚未推送本轮改动**；当前成果保存在本机工程 |
+| 最新试玩方式 | 双击 `Builds/2026-11-17_v1/Windows/HongChenKeZhan.exe`；编辑时用 Unity 打开当前场景点击 Play |
+| Windows 试玩包 | `Builds/2026-11-17_v1/HongChenKeZhan_Windows_2026-11-17_v1.zip`，版本 0.3.0，必须完整解压 |
+| GitHub 状态 | 已上传 `integrate-stage12-story` 分支；可编辑工程与 Windows 下载分开提供 |
 
 不要误开旧的 `FengChenInn` 工程或旧 `InnDuel.unity`、`ActionLab.unity`。队友克隆后在自己的仓库根目录打开工程。完整操作见 [README_开始试玩.md](README_开始试玩.md)。
 
 ## 本轮整合来源
 
-场景及菜单来自 [GitHub 的 delivery/stage12-main-menu-v2 分支](https://github.com/Dongyi0692/HongChenKeZhan/tree/delivery/stage12-main-menu-v2)，对应提交 `694951e862757c1a6ba4e01db990fba35c4b663d`。因 Git 连接失败，本次使用 GitHub 提供的分支 ZIP 下载，并校验 LFS 二进制后导入 Stage12/MainMenuV2；**没有完成 Git merge，也没有上传 GitHub**。无关的 Stage9 历史 GLB 未导入。
+场景及菜单来自 [GitHub 的 delivery/stage12-main-menu-v2 分支](https://github.com/Dongyi0692/HongChenKeZhan/tree/delivery/stage12-main-menu-v2)，对应提交 `694951e862757c1a6ba4e01db990fba35c4b663d`。整合时 Git 连接失败，因此使用 GitHub 提供的分支 ZIP 和经哈希校验的 LFS 二进制导入 Stage12/MainMenuV2，未做该交付分支的 Git 历史合并。现在网络恢复，整合分支已上传；无关的 Stage9 历史 GLB 未导入。
 
 本轮保留原角色、武器和战斗动作资源。Stage12 已有平滑楼梯碰撞，不挂旧 `InnStairTraversal`，避免重复行走碰撞。旧组件与旧场景保留供历史查阅，不是当前场景的配置依据。
 
@@ -76,7 +76,9 @@ Unity 3D 武侠动作 Demo，可编辑工程。本轮把 Stage12 客栈场景、
 
 后院 AI 报告为本机 `Logs/Stage12RescueAI_20261117_004233/report.json`：观察的 20 秒内没有注入伤害、冻结 AI 或强制命中，玩家在安全处退出目标选择。观察后另以一次明确记录的伤害调用清除最后一兵，只用于验证远处等待及靠近结尾，不计入上述真实 AI 命中。此前另一轮观察约 18 秒由盟友自然清敌，也没有运行错误。
 
-本轮状态为“工程已更新并通过上述运行检查，待用户手感与视觉验收”，不表示已正式发布。没有新打包文件，也没有 GitHub 推送。
+本轮状态为“工程已更新并通过上述运行检查，待用户手感与视觉验收”。Windows 0.3.0 构建成功（0 个构建错误、1 条旧 AnimationMixerPlayable 接口警告），独立 exe 已检查启动、主菜单、点击开始以及新版客栈显示，运行日志未发现异常。自动工具发送的键盘短按未获得可靠反馈，因此不把独立 exe 的键盘操作计为已验证，仍需真人试玩复核。构建报告为本机 `Logs/Stage12WindowsBuild.json`，启动检查为 `Logs/WindowsStandaloneSmoke_20261117/`。
+
+试玩程序需要同目录的数据和 DLL，不能只复制 exe。发给队友请使用完整 ZIP；`Builds/` 不进入源码仓库，下载页面见仓库 Releases。打包入口为 `Stage12WindowsBuild.Run`，只构建现有 Stage12，不调用历史场景安装器，并拒绝覆盖已有输出目录。
 
 ## 已知限制与后续检查
 
