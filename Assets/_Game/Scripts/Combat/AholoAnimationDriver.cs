@@ -34,7 +34,9 @@ namespace FengChenInn
         private int currentSlot = -1;
         private float fadeClock, fadeDuration;
         private bool bindingReported, guardReleasing;
+        private bool dialoguePoseLocked;
         private float impactPauseUntil;
+        public bool IsDialoguePoseActive => dialoguePoseLocked;
         public bool IsImpactPaused => Time.time < impactPauseUntil;
         public bool IsGuardReleasing => Ready && CurrentMotion == CombatMotion.Guard && guardReleasing && NormalizedTime < .999f;
 
@@ -47,12 +49,12 @@ namespace FengChenInn
         public void ClearImpactPause()
         {
             impactPauseUntil = 0f;
-            if (mixer.IsValid()) mixer.SetSpeed(1d);
+            if (mixer.IsValid()) mixer.SetSpeed(dialoguePoseLocked ? 0d : 1d);
         }
 
         private void Update()
         {
-            if (mixer.IsValid()) mixer.SetSpeed(IsImpactPaused ? 0d : 1d);
+            if (mixer.IsValid()) mixer.SetSpeed(dialoguePoseLocked || IsImpactPaused ? 0d : 1d);
         }
 
         private void Awake() => BuildGraph();
@@ -106,7 +108,7 @@ namespace FengChenInn
         // global game time nor another actor; caller restores the final pose.
         public bool SampleMotionPose(CombatMotion motion, float clipSeconds)
         {
-            if (!Ready || CurrentMotion != motion || currentSlot < 0 || !clips[currentSlot].IsValid()) return false;
+            if (dialoguePoseLocked || !Ready || CurrentMotion != motion || currentSlot < 0 || !clips[currentSlot].IsValid()) return false;
             clips[currentSlot].SetTime(Mathf.Clamp(clipSeconds, 0f, MotionLength(motion)));
             graph.Evaluate(0f);
             return true;
@@ -141,8 +143,34 @@ namespace FengChenInn
             graph.Evaluate(0f);
         }
 
+        // Own this graph for the whole dialogue, including its opening frame.
+        // Time.deltaTime can still be positive in the frame that pauses time;
+        // an explicit lock prevents later callers from replacing the sampled idle.
+        // Dialogue uses the existing relaxed standing idle; the sword remains
+        // attached to the hand. Sword-ready Idle is intentionally reserved for
+        // combat, since its forward lean and spread arms read poorly in dialogue.
+        public bool SetDialoguePose(bool active)
+        {
+            if (!active)
+            {
+                dialoguePoseLocked = false;
+                if (mixer.IsValid()) mixer.SetSpeed(IsImpactPaused ? 0d : 1d);
+                return true;
+            }
+            if (dialoguePoseLocked) return true;
+            CombatMotion standing = HasMotion(CombatMotion.ExplorationIdle) ? CombatMotion.ExplorationIdle : CombatMotion.Idle;
+            if (!Ready || !HasMotion(standing)) return false;
+            ClearImpactPause();
+            Restart(standing, 0f);
+            dialoguePoseLocked = true;
+            mixer.SetSpeed(0d);
+            graph.Evaluate(0f);
+            return true;
+        }
+
         private void PlayInternal(CombatMotion motion, float fade, float speed, bool restart)
         {
+            if (dialoguePoseLocked) return;
             if (!Ready)
             {
                 if (!bindingReported)
@@ -219,7 +247,7 @@ namespace FengChenInn
 
         private void LateUpdate()
         {
-            if (!Ready || currentSlot < 0) return;
+            if (dialoguePoseLocked || !Ready || currentSlot < 0) return;
             if (IsImpactPaused) return;
             if (fadeDuration > 0f && fadeClock < fadeDuration)
             {
@@ -255,6 +283,7 @@ namespace FengChenInn
 
         private void ReleaseGraph()
         {
+            dialoguePoseLocked = false;
             impactPauseUntil = 0f;
             if (graph.IsValid()) graph.Destroy();
             currentSlot = -1;

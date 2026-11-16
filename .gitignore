@@ -4,6 +4,7 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 /[Bb]uilds/
+/Backups/Stage12Integration/
 /.vs/
 *.csproj
 *.sln

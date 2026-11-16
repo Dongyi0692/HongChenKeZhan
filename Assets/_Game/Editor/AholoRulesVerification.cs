@@ -259,7 +259,8 @@ public static class AholoRulesVerification
             duel.eliteGuardPosition = host.transform.position + Vector3.forward * 4f + Vector3.up * .05f;
             duel.rescueArrivalPosition = host.transform.position + Vector3.forward * 7f;
             duel.ResetEncounter();
-            check(duel.Stage == DuelEncounter.EncounterStage.Arrival && !duel.EliteActor.gameObject.activeSelf, "Reset begins at arrival with elite not yet present");
+            check(duel.Stage == DuelEncounter.EncounterStage.Arrival && !duel.EliteActor.gameObject.activeSelf
+                && !duel.TutorialActor.gameObject.activeSelf, "Reset begins with both story opponents hidden");
             check(duel.HasRequiredBindings, "Configured inactive elite passes structural binding checks");
             Transform savedWeapon = duel.PlayerActor.WeaponRoot;
             duel.PlayerActor.WeaponRoot = null;
@@ -267,10 +268,14 @@ public static class AholoRulesVerification
                 "Missing weapon bindings cannot start an invisible or ineffective battle");
             duel.PlayerActor.WeaponRoot = savedWeapon;
             check(!duel.MakeEliteAlly() && !duel.BeginRescueBattle(), "Cannot convert elite or start rescue before elite victory");
-            check(duel.BeginTutorial(), "Tutorial can begin from arrival");
+            check(!duel.BeginTutorial() && duel.RevealTutorialSentry() && !duel.BeginTutorial()
+                && duel.CompleteTutorialInstructions() && duel.BeginTutorial(), "Tutorial requires reveal and instruction completion before battle");
             duel.TutorialActor.ReceiveDamage(duel.PlayerActor, 1000, 0f, 0f);
-            check(duel.Stage == DuelEncounter.EncounterStage.EliteReady && duel.EliteActor.gameObject.activeSelf, "Tutorial victory activates elite arrival");
+            check(duel.Stage == DuelEncounter.EncounterStage.EliteReady && !duel.EliteActor.gameObject.activeSelf, "Tutorial victory waits for the explicit elite arrival");
             check(!duel.MakeEliteAlly() && !duel.BeginRescueBattle(), "Tutorial victory alone cannot unlock ally conversion");
+            // This is a component-rule fixture; the separate live entrance test owns locomotion.
+            typeof(DuelEncounter).GetProperty("EliteEntranceComplete").GetSetMethod(true).Invoke(duel, new object[] { true });
+            typeof(DuelEncounter).GetField("eliteEntranceReadyAt", Hidden).SetValue(duel, Time.time);
             check(duel.BeginEliteDuel(), "Elite fight begins only after tutorial victory");
             duel.PlayerActor.ReceiveDamage(duel.EliteActor, 1000, 0f, 0f);
             check(duel.Stage == DuelEncounter.EncounterStage.Failed && !duel.IsCombatActive, "Player defeat ends current combat");
@@ -278,8 +283,10 @@ public static class AholoRulesVerification
             duel.ResetEncounter();
             check(duel.Stage == DuelEncounter.EncounterStage.Arrival && duel.PlayerActor.Health == duel.PlayerActor.MaxHealth
                 && !duel.EliteVictoryAchieved && duel.EliteActor.Team == CombatTeam.Enemy, "Full reset restores stage, health, allegiance and victory gate");
-            duel.BeginTutorial();
+            duel.RevealTutorialSentry(); duel.CompleteTutorialInstructions(); duel.BeginTutorial();
             duel.TutorialActor.ReceiveDamage(duel.PlayerActor, 1000, 0f, 0f);
+            typeof(DuelEncounter).GetProperty("EliteEntranceComplete").GetSetMethod(true).Invoke(duel, new object[] { true });
+            typeof(DuelEncounter).GetField("eliteEntranceReadyAt", Hidden).SetValue(duel, Time.time);
             duel.BeginEliteDuel();
             duel.EliteActor.ReceiveDamage(duel.PlayerActor, 1000, 0f, 0f);
             check(duel.EliteVictoryAchieved && duel.Stage == DuelEncounter.EncounterStage.EliteVictory, "Only elite defeat awards elite-victory gate");
@@ -296,7 +303,8 @@ public static class AholoRulesVerification
             check(duel.EnemyActors.All(a => a.GetComponent<EnemyCombatAI>().Target == duel.EliteActor), "Reinforcements first target the guarding elite");
             CombatActor reinforcement = duel.EnemyActors[0];
             duel.EliteActor.ReceiveDamage(reinforcement, 1000, 0f, 0f);
-            check(duel.Stage == DuelEncounter.EncounterStage.Rescue && duel.EliteActor.IsDefeated, "Ally defeat does not fail the player's rescue");
+            check(duel.Stage == DuelEncounter.EncounterStage.Rescue && duel.EliteActor.Health == 1 && !duel.EliteActor.IsDefeated,
+                "Allied elite survives lethal grunt damage at one health during rescue");
             foreach (CombatActor grunt in duel.EnemyActors.ToArray()) grunt.ReceiveDamage(duel.PlayerActor, 1000, 0f, 0f);
             check(duel.Stage == DuelEncounter.EncounterStage.Complete && !duel.IsCombatActive, "Defeating every reinforcement completes rescue");
             duel.StopCombat();

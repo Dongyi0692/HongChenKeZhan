@@ -1,0 +1,7 @@
+unity=6000.3.25f1
+scene=Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity
+playing=False
+sceneDirty=False
+missingScripts=0
+menuTextures=16/16
+buildScenes=Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity

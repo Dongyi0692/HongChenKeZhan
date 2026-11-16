@@ -92,6 +92,8 @@ public static class StageRetryVerification
         {
             ShowPlay();
             PlacePlayerNear(duel.TutorialActor);
+            // This retry fixture skips presentation but honors the new explicit story gates.
+            Require(duel.RevealTutorialSentry() && duel.CompleteTutorialInstructions(), "Could not prepare completed tutorial prerequisite");
             PrepareWoundedBattleStart();
             Call("BeginTutorialFight");
         }
@@ -326,8 +328,10 @@ public static class StageRetryVerification
         typeof(PrototypeFighter).GetProperty("Stamina").GetSetMethod(true).Invoke(fighter, new object[] { 7f });
         if (stageIndex == 2)
         {
-            Kill(duel.EliteActor, opponents[opponents.Count - 1]);
-            Check(duel.Stage == DuelEncounter.EncounterStage.Rescue, "Allied elite defeat alone does not fail rescue");
+            Require(duel.EliteActor.ReceiveDamage(opponents[opponents.Count - 1], duel.EliteActor.MaxHealth + 1, 0f, 0f, true),
+                "Could not apply lethal grunt pressure to the protected ally");
+            Check(duel.Stage == DuelEncounter.EncounterStage.Rescue && duel.EliteActor.Health == 1 && !duel.EliteActor.IsDefeated,
+                "Rescue ally survives lethal grunt damage at one health");
             if (opponents.Count > 1) Kill(opponents[0], player);
         }
         else Require(opponents[0].ReceiveDamage(player, 7, 0f, 0f, true), "Could not damage current opponent before failure.");

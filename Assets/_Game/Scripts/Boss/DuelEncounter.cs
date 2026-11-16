@@ -19,12 +19,18 @@ namespace FengChenInn
         public AholoMotionSet eliteMotions, gruntMotions;
         [Header("Encounter balance")]
         [Min(1)] public int eliteMaxHealth = 180, gruntMaxHealth = 55;
-        [Min(1)] public int RescueEnemyCount = 2;
+        [Min(1)] public int RescueEnemyCount = 5;
+        [Min(1)] public int eliteAllyMaxHealth = 600;
+        [Min(1)] public int eliteAllyMinimumHealth = 1;
+        // Retained for old serialized scenes; allies now receive their own health budget.
+        [HideInInspector]
         [Range(.05f, 1f)] public float eliteAllyRestoreFraction = .5f;
         public Vector3 tutorialPosition = new(.75f, .05f, -1.3f);
         public Vector3 eliteArrivalPosition = new(.65f, .05f, -3.5f);
         public Vector3 eliteGuardPosition = new(0f, .05f, -3.0f);
         public Vector3 rescueArrivalPosition = new(0f, .05f, -5.8f);
+        [Tooltip("Optional exact reinforcement positions. Unassigned entries use the arrival formation.")]
+        public Transform[] rescueSpawnAnchors = Array.Empty<Transform>();
         public CombatAttack[] eliteAttacks, gruntAttacks;
         [Header("Elite entrance")]
         [Min(.1f)] public float eliteEntranceSpeed = 1.7f;
@@ -37,6 +43,8 @@ namespace FengChenInn
         public bool CanRetryCurrentBattle => checkpoint.Count > 1 && IsBattleStage(RetryStage)
             && (Stage == EncounterStage.Failed || IsCombatActive && Stage == RetryStage);
         public bool EliteVictoryAchieved { get; private set; }
+        public bool TutorialSentryRevealed { get; private set; }
+        public bool TutorialInstructionsCompleted { get; private set; }
         public CombatActor PlayerActor { get; private set; }
         public CombatActor EliteActor { get; private set; }
         public CombatActor TutorialActor { get; private set; }
@@ -163,19 +171,43 @@ namespace FengChenInn
             PlayerActor.SetTeam(CombatTeam.Player);
             PlayerActor.ControlLocked = false;
             EliteVictoryAchieved = eliteRestored = false;
+            TutorialSentryRevealed = TutorialInstructionsCompleted = false;
             Feedback = "";
             TutorialActor = SpawnInactive(CombatRole.Grunt, tutorialPosition, "驻守小兵");
-            TryRevealActor(TutorialActor, tutorialPosition);
             EliteActor = SpawnInactive(CombatRole.Elite, eliteArrivalPosition, "追兵");
             Stage = EncounterStage.Arrival;
             StageChanged?.Invoke(Stage);
         }
+        public bool RevealTutorialSentry()
+        {
+            Initialize();
+            if (Stage != EncounterStage.Arrival || PlayerActor.IsDefeated || TutorialActor == null) return false;
+            if (TutorialSentryRevealed) return TutorialActor.gameObject.activeInHierarchy;
+            if (!CheckBindings() || !TryRevealActor(TutorialActor, tutorialPosition)) return false;
+            TutorialActor.CancelAttack();
+            TutorialActor.ControlLocked = true;
+            TutorialActor.Invulnerable = true;
+            TutorialActor.GetComponent<EnemyCombatAI>()?.SetCombatEnabled(false);
+            TutorialSentryRevealed = true;
+            return true;
+        }
+        public bool CompleteTutorialInstructions()
+        {
+            if (Stage != EncounterStage.Arrival || !TutorialSentryRevealed || TutorialActor == null
+                || !TutorialActor.gameObject.activeInHierarchy || PlayerActor == null || PlayerActor.IsDefeated) return false;
+            TutorialInstructionsCompleted = true;
+            PlayerActor.CancelAttack();
+            TutorialActor.CancelAttack();
+            TutorialActor.Invulnerable = false;
+            return true;
+        }
         public bool BeginTutorial()
         {
             Initialize();
-            if (Stage != EncounterStage.Arrival || TutorialActor == null || PlayerActor.IsDefeated) return false;
+            if (Stage != EncounterStage.Arrival || TutorialActor == null || PlayerActor.IsDefeated
+                || !TutorialSentryRevealed || !TutorialInstructionsCompleted) return false;
             if (!CheckBindings()) return false;
-            if (!TutorialActor.gameObject.activeSelf && !TryRevealActor(TutorialActor, tutorialPosition)) return false;
+            if (!TutorialActor.gameObject.activeInHierarchy) return false;
             StartCombat(EncounterStage.Tutorial, TutorialActor);
             return true;
         }
@@ -293,7 +325,7 @@ namespace FengChenInn
                     Show("追兵站位被挡住");
                     return false;
                 }
-                EliteActor.ResetActor(Mathf.Max(1, Mathf.RoundToInt(eliteMaxHealth * eliteAllyRestoreFraction)));
+                EliteActor.Configure(CombatRole.Elite, CombatTeam.Player, Mathf.Max(1, eliteAllyMaxHealth));
                 eliteRestored = true;
             }
             EliteActor.SetTeam(CombatTeam.Player);
@@ -312,7 +344,9 @@ namespace FengChenInn
             for (int i = 0; i < Mathf.Max(1, RescueEnemyCount); i++)
             {
                 float side = i % 2 == 0 ? -1f : 1f;
-                Vector3 point = rescueArrivalPosition + new Vector3(side * (.55f + (i / 2) * .6f), 0f, -(i / 2) * .8f);
+                Vector3 point = rescueSpawnAnchors != null && i < rescueSpawnAnchors.Length && rescueSpawnAnchors[i] != null
+                    ? rescueSpawnAnchors[i].position
+                    : rescueArrivalPosition + new Vector3(side * (.55f + (i / 2) * .6f), 0f, -(i / 2) * .8f);
                 var reinforcement = SpawnInactive(CombatRole.Grunt, point, "后续小兵 " + (i + 1));
                 reinforcements.Add(reinforcement);
                 if (!TryRevealActor(reinforcement, point))
@@ -330,6 +364,7 @@ namespace FengChenInn
             enemies.Clear();
             enemies.AddRange(reinforcements);
             PlayerActor.RestoreHealthToFull();
+            SetRescueAllyProtection(true);
             foreach (var reinforcement in reinforcements)
             {
                 reinforcement.ControlLocked = false;
@@ -408,6 +443,7 @@ namespace FengChenInn
 
             enemies.Clear();
             combatRunning = true;
+            SetRescueAllyProtection(RetryStage == EncounterStage.Rescue);
             foreach (var saved in checkpoint)
             {
                 var actor = saved.actor;
@@ -497,6 +533,7 @@ namespace FengChenInn
         public void StopCombat()
         {
             combatRunning = false;
+            SetRescueAllyProtection(false);
             if (PlayerActor != null) PlayerActor.CancelAttack();
             foreach (var actor in spawned)
             {
@@ -505,6 +542,12 @@ namespace FengChenInn
                 actor.ControlLocked = true;
                 actor.GetComponent<EnemyCombatAI>()?.SetCombatEnabled(false);
             }
+        }
+        void SetRescueAllyProtection(bool active)
+        {
+            if (EliteActor != null)
+                EliteActor.SetGruntDamageHealthFloor(active && EliteVictoryAchieved && EliteActor.Team == CombatTeam.Player
+                    ? Mathf.Max(1, eliteAllyMinimumHealth) : 0);
         }
         void StartCombat(EncounterStage stage, CombatActor opponent)
         {

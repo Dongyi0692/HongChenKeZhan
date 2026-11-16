@@ -1,0 +1,8 @@
+Counter front blocked start=(-2.000, 0.230, 1.700) end=(-2.000, 0.232, 2.610)
+West table blocked start=(-2.800, 0.230, -1.900) end=(-3.374, 0.232, -1.900)
+East wall blocked start=(2.000, 0.230, -1.600) end=(3.440, 0.232, -1.701)
+Stair ascent start=(4.700, 0.230, -2.800) end=(4.700, 4.032, 4.200)
+Stair descent start=(4.700, 4.050, 3.800) end=(4.700, 0.232, -3.200)
+Rear hidden door blocked start=(2.120, 0.230, 3.700) end=(2.120, 0.232, 4.348)
+Entrance CLOSED blocks start=(0.000, 0.230, -6.100) end=(0.000, 0.182, -5.520)
+Entrance OPEN passes start=(0.000, 0.230, -6.100) end=(0.000, 0.232, -2.600)

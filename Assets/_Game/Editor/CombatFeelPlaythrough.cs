@@ -88,7 +88,9 @@ public static class CombatFeelPlaythrough
             input = fighter.GetComponent<PrototypeInput>();
             if (input != null) input.enabled = false; // No hardware input overwrites the driven commands.
             if (duel.Stage != DuelEncounter.EncounterStage.Arrival) duel.ResetEncounter();
-            if (!duel.BeginTutorial()) throw new InvalidOperationException("Tutorial could not start: " + duel.MissingBindingReason);
+            // This combat-only fixture explicitly completes the narrative/tutorial prerequisite.
+            if (!duel.RevealTutorialSentry() || !duel.CompleteTutorialInstructions() || !duel.BeginTutorial())
+                throw new InvalidOperationException("Tutorial could not start: " + duel.MissingBindingReason);
             player = duel.PlayerActor;
             enemy = duel.TutorialActor;
             if (player == null || enemy == null || !duel.HasRequiredBindings)

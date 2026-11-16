@@ -10,9 +10,18 @@ namespace FengChenInn
 {
     public sealed class InnInterface : MonoBehaviour
     {
-        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat }
-        private enum StoryPart { Road, Hall, TutorialFight, EliteArriving, EliteFight, Departure, ReturnToHelp, JointFight, Finished }
+        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat, Ledger }
+        private enum StoryPart { Road, Hall, TutorialFight, EliteArriving, EliteFight, Departure, ReturnToHelp, JointFight, Finished, AwaitSentry, Practice }
         private enum PendingBattle { None, Tutorial, Elite, Rescue }
+
+        [Header("Story interaction anchors")]
+        public InnStoryAnchors storyAnchors;
+        public Transform ledgerAnchor, rearDoorAnchor, rearExitAnchor;
+        [Min(.5f)] public float ledgerInteractionDistance = 1.8f;
+        [Min(.5f)] public float rearExitDistance = 1.3f;
+        public bool LedgerRead => ledgerRead;
+        public int PracticeStep => practiceGuide.StepIndex;
+        public bool IsPracticing => part == StoryPart.Practice;
 
         private static readonly Color Paper = new Color32(245, 233, 213, 255);
         private static readonly Color Muted = new Color32(191, 178, 166, 255);
@@ -40,7 +49,7 @@ namespace FengChenInn
         private OrbitCamera orbit;
         private Camera sceneCamera;
         private Font bodyFont, titleFont;
-        private Texture2D titleShade, panelGrain;
+        private Texture2D titleShade, panelGrain, ledgerInk;
         private RectTransform root, bars, warning, hint, rivalPanel, allyPanel;
         private UnityEngine.UI.Image playerFill, rivalFill, allyFill, staminaFill, tellFill;
         private UnityEngine.UI.Text playerValue, rivalValue, rivalName, allyValue, staminaValue, enemyCount, objective;
@@ -58,6 +67,10 @@ namespace FengChenInn
         private float shortLineUntil, fightLength, arrivalAt, rescueAt, hintUntil;
         private float battleStartFightLength;
         private bool battleStartDoorOpen;
+        private bool battleStartRearDoorOpen, ledgerRead;
+        private readonly InnPracticeGuide practiceGuide = new();
+        private RectTransform practicePanel;
+        private UnityEngine.UI.Text practiceProgress, practiceInstruction;
         private bool watchingSkirmish;
         private bool lightHit, heavyHit, defended;
         private RectTransform targetMarker;
@@ -76,6 +89,7 @@ namespace FengChenInn
             input.InterfaceControlsDuel = true;
             input.StoryAllowsCombat = false;
             duel = encounter;
+            ResolveStoryAnchors();
             entrance = FindFirstObjectByType<InnEntranceDoors>();
             // Keep the current story's manual door interaction. No new scene or door is created.
             if (entrance != null) entrance.ManualControl = true;
@@ -83,7 +97,7 @@ namespace FengChenInn
             orbit = sceneCamera != null ? sceneCamera.GetComponent<OrbitCamera>() : null;
             bodyFont = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "Noto Sans CJK SC", "SimHei" }, 32);
             titleFont = Font.CreateDynamicFontFromOSFont(new[] { "KaiTi", "SimSun", "Microsoft YaHei" }, 96);
-            root = Fill(transform, "风尘客栈界面");
+            root = Fill(transform, "红尘客栈界面");
             if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
             if (EventSystem.current == null)
                 new GameObject("Inn UI Events", typeof(EventSystem), typeof(InputSystemUIInputModule));
@@ -107,6 +121,7 @@ namespace FengChenInn
             BuildTitle();
             BuildTutorial();
             BuildDialogue();
+            BuildLedger();
             BuildPause();
             BuildSettings();
             BuildResult(true);
@@ -126,11 +141,17 @@ namespace FengChenInn
                 else if (view == View.Pause) Show(View.Play);
                 else if (view == View.Settings) CloseSettings();
                 else if (view == View.Tutorial) CloseTutorial();
+                else if (view == View.Ledger) Show(View.Play);
                 return;
             }
             if (view == View.Dialogue)
             {
                 if (keys != null && (keys.eKey.wasPressedThisFrame || keys.spaceKey.wasPressedThisFrame)) AdvanceDialogue();
+                return;
+            }
+            if (view == View.Ledger)
+            {
+                if (keys != null && keys.eKey.wasPressedThisFrame) FinishReadingLedger();
                 return;
             }
             if (view == View.Victory || view == View.Defeat)
@@ -300,11 +321,14 @@ namespace FengChenInn
         private void OnDestroy()
         {
             if (!initialized) return;
+            practiceGuide.Dispose();
+            if (fighter != null) fighter.SetDialoguePose(false);
             UnwatchCombatEvents();
             Time.timeScale = 1f;
             PrototypeInput.SetCursor(false);
             Destroy(titleShade);
             Destroy(panelGrain);
+            Destroy(ledgerInk);
             Destroy(bodyFont);
             Destroy(titleFont);
             Destroy(strikeSound);
@@ -318,6 +342,7 @@ namespace FengChenInn
             view = next;
             foreach (var pair in views) pair.Value.gameObject.SetActive(pair.Key == next);
             bool play = next == View.Play;
+            fighter.SetDialoguePose(next == View.Dialogue || next == View.Ledger);
             Time.timeScale = play ? 1f : 0f;
             input.enabled = play;
             fighter.ClearInput();
@@ -351,8 +376,8 @@ namespace FengChenInn
 
         private void StartGame()
         {
-            firstTutorial = PlayerPrefs.GetInt(Pref + "tutorialV2") == 0;
-            Show(firstTutorial ? View.Tutorial : View.Play);
+            firstTutorial = false;
+            Show(View.Play);
         }
 
         private void CloseTutorial()
@@ -371,6 +396,7 @@ namespace FengChenInn
                 return;
             }
             UnwatchCombatEvents();
+            practiceGuide.Dispose();
             afterDialogue = null;
             lines = null;
             fighter.ResetPose();
@@ -378,10 +404,13 @@ namespace FengChenInn
             input.StoryAllowsCombat = false;
             part = StoryPart.Road;
             pendingBattle = PendingBattle.None;
+            ledgerRead = false;
             if (entrance != null) entrance.OpenRequested = false;
+            if (storyAnchors != null) storyAnchors.SetRearDoorOpen(false);
             shortLineUntil = fightLength = arrivalAt = rescueAt = 0f;
             battleStartFightLength = 0f;
             battleStartDoorOpen = false;
+            battleStartRearDoorOpen = false;
             lightHit = heavyHit = defended = hasHelped = heardAllyDown = resultStarted = false;
             Show(toTitle ? View.Title : View.Play);
         }
@@ -390,6 +419,7 @@ namespace FengChenInn
         {
             battleStartFightLength = fightLength;
             battleStartDoorOpen = entrance != null && entrance.OpenRequested;
+            battleStartRearDoorOpen = storyAnchors != null && storyAnchors.RearDoorOpen;
         }
 
         private void RetryCurrentBattle()
@@ -403,6 +433,7 @@ namespace FengChenInn
                 return;
             }
             UnwatchCombatEvents();
+            practiceGuide.Dispose();
             afterDialogue = null;
             lines = null;
             pendingBattle = PendingBattle.None;
@@ -413,6 +444,7 @@ namespace FengChenInn
                 : duel.Stage == DuelEncounter.EncounterStage.EliteDuel ? StoryPart.EliteFight : StoryPart.ReturnToHelp;
             if (part == StoryPart.TutorialFight) lightHit = heavyHit = defended = false;
             if (entrance != null) entrance.OpenRequested = battleStartDoorOpen;
+            if (storyAnchors != null) storyAnchors.SetRearDoorOpen(battleStartRearDoorOpen);
             if (part == StoryPart.ReturnToHelp) rescueAt = Time.time;
             input.StoryAllowsCombat = true;
             WatchCombatEvents();
@@ -433,7 +465,7 @@ namespace FengChenInn
             else if (!watchSkirmish && watchingSkirmish && orbit != null) orbit.ResumeFollow();
             watchingSkirmish = watchSkirmish;
             bool battle = IsCombatPart && duel.IsCombatActive;
-            input.StoryAllowsCombat = battle;
+            input.StoryAllowsCombat = battle || part == StoryPart.Practice;
             UpdateMeters(battle);
             if (battle) fightLength += Time.deltaTime;
             shortLine.gameObject.SetActive(Time.time < shortLineUntil);
@@ -456,14 +488,13 @@ namespace FengChenInn
                 OpenDialogue(() =>
                 {
                     duel.MakeEliteAlly();
-                    if (entrance != null) entrance.OpenRequested = true;
                     Show(View.Play);
-                    Say("追兵已成为同伴。\n走到客栈门外。", 4.5f);
+                    Say("从后门离开客栈。", 4.5f);
                 }, InnStoryScript.Victory);
                 return;
             }
             if ((part == StoryPart.ReturnToHelp || part == StoryPart.JointFight)
-                && duel.Stage == DuelEncounter.EncounterStage.Complete && !resultStarted)
+                && duel.Stage == DuelEncounter.EncounterStage.Complete && hasHelped && !resultStarted)
             {
                 resultStarted = true;
                 part = StoryPart.Finished;
@@ -475,6 +506,12 @@ namespace FengChenInn
             }
             string cue = UpdateStoryMovement(interact);
             if (view != View.Play) return;
+            practicePanel.gameObject.SetActive(part == StoryPart.Practice);
+            if (part == StoryPart.Practice)
+            {
+                practiceProgress.text = practiceGuide.Progress;
+                practiceInstruction.text = practiceGuide.Instruction;
+            }
             if (part == StoryPart.TutorialFight) cue = TutorialHint();
             if (battle && fighter.Stamina < 1f) cue = "体力不足 · 松开格挡，等待体力恢复";
             hint.gameObject.SetActive(cue.Length != 0 || Time.unscaledTime < hintUntil);
@@ -504,11 +541,13 @@ namespace FengChenInn
             objective.text = part switch
             {
                 StoryPart.Road => "入栈  ·  沿驿路走向客栈",
-                StoryPart.Hall => "入栈  ·  与驻守小兵交谈",
+                StoryPart.Hall => "空栈  ·  查看账台上的账本",
+                StoryPart.AwaitSentry => "异动  ·  留意账台附近",
+                StoryPart.Practice => "初试剑  ·  按提示完成实操",
                 StoryPart.TutorialFight => "初试剑  ·  击退驻守小兵",
                 StoryPart.EliteArriving => "追兵已至  ·  留意客栈门口",
                 StoryPart.EliteFight => "赴约  ·  击败追兵",
-                StoryPart.Departure => "承诺  ·  走到客栈门外",
+                StoryPart.Departure => "承诺  ·  从后门离开客栈",
                 StoryPart.ReturnToHelp => "回头  ·  返回帮助追兵",
                 StoryPart.JointFight => "并肩  ·  击退所有来兵",
                 _ => ""
@@ -593,17 +632,29 @@ namespace FengChenInn
                         if (entrance != null) entrance.OpenRequested = false;
                         part = StoryPart.Hall;
                         Say("红拂女 · " + InnStoryScript.Arrival);
-                        return "走近驻守小兵，按 E 交谈";
+                        return "店内无人 · 去账台看看";
                     }
                     if (interact && Near(door, 2f) && entrance != null) entrance.OpenRequested = true;
                     return Near(door, 2f) ? "E   推门　「逆旅」" : "WASD 移动并转身 · 鼠标转动视角";
                 case StoryPart.Hall:
-                    if (duel.ActiveEnemy != null && Near(duel.ActiveEnemy.transform.position, 2.4f))
+                    if (ledgerAnchor == null) return "账本交互点尚未配置";
+                    if (Near(ledgerAnchor.position, ledgerInteractionDistance))
                     {
-                        if (interact) OpenDialogue(BeginTutorialFight, InnStoryScript.Sentry);
-                        return "E   与驻守小兵交谈";
+                        if (interact) Show(View.Ledger);
+                        return "E   翻阅账本";
                     }
-                    return "走近驻守小兵 · E 交谈";
+                    return "店内无人 · 查看账台上的账本";
+                case StoryPart.AwaitSentry:
+                    if (interact) RevealSentryAndTalk();
+                    return "小兵现身的位置被挡住 · 留出空地，E 重试";
+                case StoryPart.Practice:
+                    practiceGuide.Tick(Time.deltaTime);
+                    if (practiceGuide.Complete)
+                    {
+                        if (duel.CompleteTutorialInstructions()) BeginTutorialFight();
+                        else return "动作尚未收势 · 稍候开始交手";
+                    }
+                    return practiceGuide.Instruction;
                 case StoryPart.EliteArriving:
                     if (!duel.EliteEntranceInProgress && !duel.EliteEntranceComplete && Time.time >= arrivalAt)
                     {
@@ -622,20 +673,28 @@ namespace FengChenInn
                 case StoryPart.EliteFight:
                     return "看清起手，等对手收势再反击";
                 case StoryPart.Departure:
-                    // Use the existing approach road; leaving and returning are real movement.
-                    if (Near(door + Vector3.back * 2.3f, 1.2f))
+                    if (rearDoorAnchor == null || rearExitAnchor == null || storyAnchors == null)
+                        return "后门撤离引导点尚未配置";
+                    if (Near(rearExitAnchor.position, rearExitDistance) && storyAnchors.RearDoorOpen)
                     {
-                        part = StoryPart.ReturnToHelp;
-                        OpenDialogue(BeginRescue, InnStoryScript.Reinforcements);
+                        BeginRescue();
+                        return "门外传来兵刃声 · 回头看看";
                     }
-                    return "走到客栈门外";
+                    if (Near(rearDoorAnchor.position, storyAnchors.rearDoorDistance))
+                    {
+                        if (interact && !storyAnchors.OpenRearDoor()) return "后门尚未配置开门组件";
+                        return storyAnchors.RearDoorOpen ? "穿过后门，离开客栈" : "E   推开后门";
+                    }
+                    return "走向后门 · E 推门离开";
                 case StoryPart.ReturnToHelp:
                     if (!hasHelped && Time.time >= rescueAt + 2f && duel.EliteActor != null && Near(duel.EliteActor.transform.position, 3.5f))
                     {
                         hasHelped = true;
                         part = StoryPart.JointFight;
-                        Say("追兵 · 你怎么又回来了？\n红拂女 · 你的账，还没算完。", 5.5f);
+                        Say("追兵 · 不是叫你走么？\n红拂女 · 欠你一句话，总得还上。", 5.5f);
                     }
+                    if (duel.Stage == DuelEncounter.EncounterStage.Complete && !hasHelped)
+                        return "来兵已退 · 靠近追兵交谈";
                     return "返回帮助追兵 · 同伴之间不会互相伤害";
                 case StoryPart.JointFight:
                     if (!heardAllyDown && duel.EliteActor != null && duel.EliteActor.IsDefeated)
@@ -659,6 +718,48 @@ namespace FengChenInn
             return "击退驻守小兵 · 看清起手，等收势再反击";
         }
 
+        private void ResolveStoryAnchors()
+        {
+            if (storyAnchors == null) storyAnchors = FindFirstObjectByType<InnStoryAnchors>();
+            if (storyAnchors == null) return;
+            if (ledgerAnchor == null) ledgerAnchor = storyAnchors.ledger;
+            if (rearDoorAnchor == null) rearDoorAnchor = storyAnchors.rearDoor;
+            if (rearExitAnchor == null) rearExitAnchor = storyAnchors.rearExit;
+            ledgerInteractionDistance = storyAnchors.ledgerInteractionDistance;
+            rearExitDistance = storyAnchors.rearExitDistance;
+        }
+
+        private void FinishReadingLedger()
+        {
+            if (view != View.Ledger) return;
+            ledgerRead = true;
+            part = StoryPart.AwaitSentry;
+            Show(View.Play);
+            RevealSentryAndTalk();
+        }
+
+        private void RevealSentryAndTalk()
+        {
+            if (!ledgerRead) return;
+            if (!duel.RevealTutorialSentry())
+            {
+                part = StoryPart.AwaitSentry;
+                Say("屏风后有人影，却被杂物挡住了。留出空地，按 E 继续。", 5f);
+                return;
+            }
+            OpenDialogue(BeginPractice, InnStoryScript.Sentry);
+        }
+
+        private void BeginPractice()
+        {
+            if (duel.TutorialInstructionsCompleted) { BeginTutorialFight(); return; }
+            practiceGuide.Begin(fighter, sceneCamera);
+            part = StoryPart.Practice;
+            input.StoryAllowsCombat = true;
+            Show(View.Play);
+            Say("系统提示 · 按顺序完成实际操作。\n练习期间，小兵不会主动攻击。", 5f);
+        }
+
         private string DirectionLabel(Transform threat)
         {
             if (sceneCamera == null || threat == null) return "前方";
@@ -673,6 +774,7 @@ namespace FengChenInn
         private void BeginTutorialFight()
         {
             if (!duel.BeginTutorial()) { WaitForBattle(PendingBattle.Tutorial); return; }
+            practiceGuide.Dispose();
             RememberBattleStart();
             pendingBattle = PendingBattle.None;
             part = StoryPart.TutorialFight;
@@ -698,13 +800,12 @@ namespace FengChenInn
             part = StoryPart.ReturnToHelp;
             input.StoryAllowsCombat = true;
             rescueAt = Time.time;
-            if (entrance != null) entrance.OpenRequested = true;
             RememberBattleStart();
             Show(View.Play);
             FrameActors(duel.EliteActor != null ? duel.EliteActor.transform : null,
                 duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null);
             watchingSkirmish = true;
-            Say("红拂女 · 他替我挡了这一回。\n路还长，不能把人情留在雨里。", 6f);
+            Say(InnStoryScript.RescueDiscovery, 6f);
         }
 
         private void WaitForBattle(PendingBattle waiting)
@@ -808,9 +909,8 @@ namespace FengChenInn
             if (duel.PlayerActor != null && !duel.PlayerActor.IsDefeated)
             {
                 fighter.PlaceForStory(fighter.transform.position, Quaternion.LookRotation(toward));
-                // PlaceForStory requests a short idle fade, but dialogue has
-                // already paused time. Sample the finished stance explicitly.
-                duel.PlayerActor.Animation?.SettleForDialogue(duel.IsCombatActive);
+                // PlaceForStory reapplies the player's dedicated held dialogue
+                // pose; do not replace it with the ordinary exploration idle.
             }
             var actor = other.GetComponent<CombatActor>();
             if (actor != null && !actor.IsDefeated)
@@ -889,6 +989,11 @@ namespace FengChenInn
             shortLine = Label(layer, "", 21, Paper, Bottom, new Vector2(0, 98), new Vector2(980, 72), TextAnchor.MiddleCenter);
             shortLine.gameObject.AddComponent<Shadow>().effectColor = Color.black;
             Label(layer, "F1 操作   ·   Esc 暂停", 15, Paper, BottomLeft, new Vector2(30, 22), new Vector2(300, 26));
+            practicePanel = Place(layer, "逐项实操", TopRight, TopRight, new Vector2(-40, -156), new Vector2(410, 120));
+            Paint(practicePanel, Ink);
+            practiceProgress = Label(practicePanel, "", 22, Amber, TopLeft, new Vector2(16, -12), new Vector2(378, 34));
+            practiceInstruction = Label(practicePanel, "", 21, Paper, TopLeft, new Vector2(16, -51), new Vector2(378, 60));
+            practicePanel.gameObject.SetActive(false);
             BuildCombatFeedback(layer);
         }
 
@@ -968,17 +1073,9 @@ namespace FengChenInn
         private void BuildTitle()
         {
             var layer = CreateView(View.Title);
-            TitleBackdrop(layer);
-            var col = Place(layer, "标题版面", new Vector2(0, .5f), new Vector2(0, .5f), new Vector2(84, 5), new Vector2(650, 630));
-            Label(col, "雨 夜 客 栈     /     武 侠 小 品", 21, Amber, TopLeft, new Vector2(4, -36), new Vector2(580, 35));
-            Label(col, "风尘客栈", 100, Paper, TopLeft, new Vector2(-4, -82), new Vector2(600, 138), display: true);
-            Rule(col, TopLeft, new Vector2(4, -226), new Vector2(406, 1));
-            Label(col, "檐下灯未熄，风雨已入门。", 24, Muted, TopLeft, new Vector2(4, -244), new Vector2(560, 48));
-            Button(col, "开始游戏", TopLeft, new Vector2(4, -334), new Vector2(278, 60), StartGame, true);
-            Button(col, "设置", TopLeft, new Vector2(4, -410), new Vector2(278, 54), OpenSettings);
-            Button(col, "退出游戏", TopLeft, new Vector2(4, -479), new Vector2(278, 54), Quit);
-            Label(layer, "一更  /  客栈外", 22, Amber, TopRight, new Vector2(-64, -57), new Vector2(260, 38), TextAnchor.MiddleRight);
-            Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(84, 37), new Vector2(520, 28));
+            layer.gameObject.AddComponent<MainMenuV2>().Build(StartGame, OpenSettings, Quit);
+            Label(layer, InnStoryScript.AICredit, 15, Muted, new Vector2(1, 0), new Vector2(-28, 14),
+                new Vector2(460, 24), TextAnchor.MiddleRight);
         }
 
         private void BuildTutorial()
@@ -1017,6 +1114,75 @@ namespace FengChenInn
             pageCount = Label(frame, "", 16, Muted, BottomLeft, new Vector2(30, 16), new Vector2(110, 30));
             Button(frame, "E  继续", new Vector2(1, 0), new Vector2(-28, 15), new Vector2(140, 36), AdvanceDialogue);
             Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(30, 10), new Vector2(520, 26));
+        }
+
+        private void BuildLedger()
+        {
+            var layer = CreateView(View.Ledger);
+            Paint(Fill(layer, "阅读暗场"), new Color(.025f, .02f, .018f, .88f), true);
+            var book = Place(layer, "展开的账本", Center, Center, new Vector2(0, 32), new Vector2(1120, 646));
+            Paint(book, new Color32(87, 61, 39, 255));
+            var left = Place(book, "墨污旧页", TopLeft, TopLeft, new Vector2(12, -12), new Vector2(536, 622));
+            var right = Place(book, "清晰账页", TopRight, TopRight, new Vector2(-12, -12), new Vector2(536, 622));
+            Paint(left, new Color32(222, 204, 166, 255));
+            Paint(right, new Color32(238, 223, 190, 255));
+            Color writing = new Color32(54, 42, 32, 255);
+            Label(left, "逆旅流水账", 44, writing, TopLeft, new Vector2(34, -30), new Vector2(470, 60), display: true);
+            Label(left, "房钱、饭食、酒钱，按日记入。\n米柴、菜盐，另列支出。", 23,
+                writing, TopLeft, new Vector2(36, -128), new Vector2(466, 82), TextAnchor.UpperLeft);
+            ledgerInk = MakeLedgerInk();
+            // Reserve the middle of the page for the blot; neither text block
+            // intersects this rectangle, even before the texture's transparent rim.
+            var stain = Place(left, "空白处的墨迹", TopLeft, TopLeft, new Vector2(52, -240), new Vector2(430, 268))
+                .gameObject.AddComponent<UnityEngine.UI.RawImage>();
+            stain.texture = ledgerInk;
+            stain.raycastTarget = false;
+            Label(left, "掌柜手记：日清日结，不赊旧账。", 20, writing, BottomLeft,
+                new Vector2(35, 30), new Vector2(466, 34));
+            Label(right, "十月 · 日清册", 34, writing, TopLeft, new Vector2(35, -32), new Vector2(466, 50), display: true);
+            Paint(Place(right, "账页横线", TopLeft, TopLeft, new Vector2(35, -99), new Vector2(466, 1)), new Color32(138, 108, 75, 255));
+            string[] days = InnStoryScript.LedgerEntries.Split(new[] { "\n\n" }, StringSplitOptions.None);
+            for (int i = 0; i < days.Length; i++)
+            {
+                // Give the interrupted latest entry its own guaranteed space;
+                // a single long text box previously clipped its final sentence.
+                float top = i < 3 ? 118f + i * 108f : 450f;
+                var entries = Label(right, days[i], 21, writing, TopLeft,
+                    new Vector2(35, -top), new Vector2(466, i < 3 ? 94 : 124), TextAnchor.UpperLeft);
+                entries.lineSpacing = 1f;
+            }
+            var lastDrop = Place(right, "末句旁的小墨痕", TopLeft, TopLeft,
+                new Vector2(215, -508), new Vector2(64, 22)).gameObject.AddComponent<UnityEngine.UI.RawImage>();
+            lastDrop.texture = ledgerInk;
+            lastDrop.raycastTarget = false;
+            Label(layer, "最新一笔停在半句，旁边留着一小点墨。", 21, Paper, Bottom,
+                new Vector2(0, 97), new Vector2(1050, 35), TextAnchor.MiddleCenter);
+            Button(layer, "读完，合上  E", Bottom, new Vector2(0, 32), new Vector2(272, 48), FinishReadingLedger, true);
+        }
+
+        private static Texture2D MakeLedgerInk()
+        {
+            const int size = 256;
+            var pixels = new Color32[size * size];
+            var blots = new[] { new Vector4(.38f, .62f, .27f, .25f), new Vector4(.67f, .44f, .24f, .19f),
+                new Vector4(.36f, .33f, .21f, .18f), new Vector4(.58f, .72f, .17f, .13f), new Vector4(.73f, .68f, .08f, .07f) };
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float px = (float)x / size, py = (float)y / size, density = -1f;
+                foreach (Vector4 blot in blots)
+                {
+                    float dx = (px - blot.x) / blot.z, dy = (py - blot.y) / blot.w;
+                    density = Mathf.Max(density, 1f - dx * dx - dy * dy);
+                }
+                float grain = Mathf.PerlinNoise(px * 37f + 4.1f, py * 37f + 2.4f);
+                byte alpha = (byte)(Mathf.Clamp01(density * 8f + grain * .45f) * 235f);
+                pixels[y * size + x] = new Color32(29, 26, 23, alpha);
+            }
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "Ledger ink", wrapMode = TextureWrapMode.Clamp };
+            texture.SetPixels32(pixels);
+            texture.Apply();
+            return texture;
         }
 
         private void BuildPause()

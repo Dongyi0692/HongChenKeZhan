@@ -97,6 +97,7 @@ namespace FengChenInn
             && !guardExhausted && (GuardHoldCost <= 0f && !useImpactGuardCost || Stamina > .001f)
             && !MovementLocked && IsMotionAvailable(CombatMotion.Guard);
         public bool IsRunning { get; private set; }
+        public bool IsDialoguePoseActive => dialoguePoseLocked;
         public bool IsInvulnerable => State == ActionState.Dodge && actionTime >= dodgeInvulnerability.x
             && actionTime < dodgeInvulnerability.y && !MovementLocked;
         public bool IsAttackActive
@@ -121,7 +122,7 @@ namespace FengChenInn
         public float HitRecoil => Mathf.Max(impact.Strength, actor != null && actor.IsStunned ? 1f : 0f);
         public bool CanAnimateJump => IsMotionAvailable(CombatMotion.JumpStart)
             && IsMotionAvailable(CombatMotion.JumpLoop) && IsMotionAvailable(CombatMotion.JumpLand);
-        public string Status => actor != null && actor.IsDefeated ? "Defeated" : MovementLocked ? "Stagger"
+        public string Status => actor != null && actor.IsDefeated ? "Defeated" : dialoguePoseLocked ? "Idle" : MovementLocked ? "Stagger"
             : State != ActionState.Ready ? State.ToString() : !IsGrounded ? "Jump" : IsGuarding ? "Guard"
             : IsRunning ? "Run" : planarVelocity.sqrMagnitude > .02f ? "Walk" : "Idle";
         public int LightAttackCount { get; private set; }
@@ -151,10 +152,11 @@ namespace FengChenInn
         private float verticalVelocity, actionTime, lastGroundedAt = -10f, jumpedAt = -10f;
         private float landingUntil, lastStaminaUseAt = -10f;
         private bool wasGrounded, wasGuarding, guardExhausted, groundedFromMovement;
+        private bool dialoguePoseLocked;
         private BufferedAction queuedAction;
         private float queuedUntil;
         private ImpactSlide impact;
-        private bool MovementLocked => impact.Active || actor != null && (actor.IsDefeated || actor.IsStunned || actor.ControlLocked);
+        private bool MovementLocked => dialoguePoseLocked || impact.Active || actor != null && (actor.IsDefeated || actor.IsStunned || actor.ControlLocked);
 
         private void Awake()
         {
@@ -226,7 +228,7 @@ namespace FengChenInn
 
         private void LateUpdate()
         {
-            if (State != ActionState.Dodge || animationDriver == null || animationDriver.HasMotion(CombatMotion.Dodge)
+            if (dialoguePoseLocked || State != ActionState.Dodge || animationDriver == null || animationDriver.HasMotion(CombatMotion.Dodge)
                 || !ResolveLegacyDodgeBones()) return;
             float dive = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, .10f, actionTime));
             float recover = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.27f, .45f, actionTime));
@@ -246,7 +248,11 @@ namespace FengChenInn
             dodgeRightLower.rotation = Quaternion.AngleAxis(-35f * weight, transform.right) * dodgeRightLower.rotation;
         }
 
-        private void OnDisable() => RestoreLegacyDodgePose();
+        private void OnDisable()
+        {
+            RestoreLegacyDodgePose();
+            SetDialoguePose(false);
+        }
         private Vector3 CameraMovement()
         {
             Transform view = Camera.main != null ? Camera.main.transform : transform;
@@ -297,6 +303,7 @@ namespace FengChenInn
         }
         private bool Request(BufferedAction requested)
         {
+            if (dialoguePoseLocked) return false;
             if (TryExecute(requested)) { queuedAction = BufferedAction.None; return true; }
             bool available = requested == BufferedAction.Jump ? CanAnimateJump : IsMotionAvailable(MotionFor(requested));
             if (CanBufferInput() && available)
@@ -308,7 +315,7 @@ namespace FengChenInn
         }
         private bool CanBufferInput()
         {
-            if (actor != null && (actor.IsDefeated || actor.ControlLocked)) return false;
+            if (dialoguePoseLocked || actor != null && (actor.IsDefeated || actor.ControlLocked)) return false;
             // Only the final short part of hitstun accepts an early input. A
             // long stun must never release a stale attack several seconds later.
             return !MovementLocked || !impact.Active && actor != null && actor.IsStunned
@@ -324,6 +331,7 @@ namespace FengChenInn
         };
         private bool TryExecute(BufferedAction requested)
         {
+            if (dialoguePoseLocked) return false;
             CombatAttack requestedAttack = requested == BufferedAction.Heavy ? heavyAttack
                 : requested == BufferedAction.Skill ? skillAttack : requested == BufferedAction.Light ? lightAttack : null;
             if (actor != null && actor.IsHitPaused) return false;
@@ -412,6 +420,11 @@ namespace FengChenInn
         private void Update()
         {
             RestoreLegacyDodgePose();
+            if (dialoguePoseLocked)
+            {
+                animationDriver?.SetDialoguePose(true);
+                return;
+            }
             float dt = Time.deltaTime;
             if (dt <= 0f || controller == null || !controller.enabled) return;
             if (actor == null || animationDriver == null) RefreshBindings();
@@ -617,6 +630,7 @@ namespace FengChenInn
         }
         public void ResetPose()
         {
+            SetDialoguePose(false);
             PlaceForStory(spawnPosition, spawnRotation);
             Stamina = maxStamina;
             lastStaminaUseAt = -10f;
@@ -625,6 +639,7 @@ namespace FengChenInn
         }
         public void PlaceForStory(Vector3 position, Quaternion rotation)
         {
+            RestoreLegacyDodgePose();
             if (controller == null) controller = GetComponent<CharacterController>();
             bool controllerWasEnabled = controller.enabled;
             controller.enabled = false;
@@ -641,9 +656,73 @@ namespace FengChenInn
             ClearInput();
             if (actor != null) { actor.CancelAttack(); actor.Invulnerable = false; }
             if (animationDriver != null) animationDriver.ClearImpactPause();
+            if (dialoguePoseLocked)
+            {
+                SettleDialogueFeet();
+                animationDriver?.SetDialoguePose(true);
+                return;
+            }
             CombatMotion rest = encounter != null && encounter.IsCombatActive ? CombatMotion.Idle : CombatMotion.ExplorationIdle;
             if (animationDriver != null && animationDriver.Ready && animationDriver.HasMotion(rest))
                 animationDriver.Play(rest, .1f);
+        }
+
+        // Dialogue owns presentation until the UI returns control. Clearing a
+        // one-frame input and pausing time alone cannot guarantee this ordering.
+        public void SetDialoguePose(bool active)
+        {
+            if (dialoguePoseLocked == active) return;
+            dialoguePoseLocked = active;
+            if (!active)
+            {
+                animationDriver?.SetDialoguePose(false);
+                ClearInput();
+                return;
+            }
+            RefreshBindings();
+            RestoreLegacyDodgePose();
+            ClearInput();
+            planarVelocity = Vector3.zero;
+            verticalVelocity = 0f;
+            impact = default;
+            actionTime = landingUntil = 0f;
+            jumpedAt = -10f;
+            wasGuarding = IsRunning = false;
+            State = ActionState.Ready;
+            if (actor != null) { actor.CancelAttack(); actor.Invulnerable = false; }
+            SettleDialogueFeet();
+            animationDriver?.SetDialoguePose(true);
+        }
+
+        private void SettleDialogueFeet()
+        {
+            if (controller == null) controller = GetComponent<CharacterController>();
+            if (controller == null || !controller.enabled) return;
+            // Keep X/Z and facing. Find a walkable floor within one jump below,
+            // then let the controller resolve the downward movement against it.
+            // Ignore actors so a nearby opponent is never mistaken for the floor.
+            float lift = controller.skinWidth + .05f;
+            float nearest = float.PositiveInfinity;
+            float reach = Mathf.Max(.3f, jumpHeight + controller.stepOffset + .5f) + lift;
+            float minimumNormal = Mathf.Cos(Mathf.Min(80f, controller.slopeLimit) * Mathf.Deg2Rad);
+            foreach (RaycastHit hit in Physics.RaycastAll(transform.position + Vector3.up * lift, Vector3.down,
+                reach, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider.transform.IsChildOf(transform) || hit.collider.GetComponentInParent<CombatActor>() != null
+                    || hit.normal.y < minimumNormal) continue;
+                nearest = Mathf.Min(nearest, hit.distance);
+            }
+            if (!float.IsPositiveInfinity(nearest))
+            {
+                float down = Mathf.Max(.02f, nearest - lift + controller.skinWidth + .02f);
+                CollisionFlags contact = controller.Move(Vector3.down * down);
+                groundedFromMovement = (contact & CollisionFlags.Below) != 0;
+            }
+            else groundedFromMovement = controller.isGrounded;
+            wasGrounded = groundedFromMovement;
+            landingUntil = 0f;
+            verticalVelocity = groundedFromMovement ? -2f : 0f;
+            lastGroundedAt = groundedFromMovement ? Time.time : -10f;
         }
     }
 }

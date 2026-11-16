@@ -49,6 +49,8 @@ namespace FengChenInn
         public CombatTeam Team => team;
         public int MaxHealth => maxHealth;
         public int Health { get; private set; }
+        // Temporary story protection, enabled by the encounter only during the rescue.
+        public int GruntDamageHealthFloor { get; private set; }
         public bool IsDefeated => Health <= 0;
         public bool IsStunned => stunTime > 0f;
         public float StunRemaining => stunTime;
@@ -158,6 +160,7 @@ namespace FengChenInn
         void OnDisable()
         {
             actors.Remove(this);
+            GruntDamageHealthFloor = 0;
             CancelAttack();
             if (Animation != null) Animation.ClearImpactPause();
         }
@@ -183,6 +186,7 @@ namespace FengChenInn
             defeatedFor = 0f;
             CancelAttack();
             Health = health < 0 ? maxHealth : Mathf.Clamp(health, 1, maxHealth);
+            GruntDamageHealthFloor = 0;
             stunTime = 0f;
             impact = default;
             Guarding = Invulnerable = ControlLocked = false;
@@ -194,6 +198,12 @@ namespace FengChenInn
         public void RestoreHealthToFull()
         {
             if (!IsDefeated) Health = maxHealth;
+        }
+
+        public void SetGruntDamageHealthFloor(int health)
+        {
+            GruntDamageHealthFloor = role == CombatRole.Elite && team == CombatTeam.Player
+                ? Mathf.Clamp(health, 0, maxHealth) : 0;
         }
 
         void RestoreDefeatVisuals()
@@ -225,6 +235,7 @@ namespace FengChenInn
             if (role == CombatRole.Grunt && value != CombatTeam.Enemy) return;
             CancelAttack();
             team = value;
+            GruntDamageHealthFloor = 0;
             Guarding = Invulnerable = false;
         }
 
@@ -278,7 +289,9 @@ namespace FengChenInn
                 PauseContact(source, .025f);
                 return true;
             }
-            int dealt = Mathf.Min(Health, amount);
+            int healthFloor = role == CombatRole.Elite && team == CombatTeam.Player && source != null
+                && source.Role == CombatRole.Grunt && IsHostileTo(source) ? GruntDamageHealthFloor : 0;
+            int dealt = Mathf.Min(Mathf.Max(0, Health - healthFloor), amount);
             Health -= dealt;
             CancelAttack();
             Guarding = false;
