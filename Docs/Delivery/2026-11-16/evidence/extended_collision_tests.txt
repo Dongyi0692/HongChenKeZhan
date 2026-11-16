@@ -1,0 +1,13 @@
+Player profile: height=1.8 radius=0.36 step=0.3 slope=50 layer=0 gravity=-22
+PASS Stair up x=4.5 end=(4.500, 4.032, 4.200)
+PASS Stair down x=4.5 end=(4.500, 0.232, -3.783)
+PASS Stair up x=4.7 end=(4.700, 4.032, 4.200)
+PASS Stair down x=4.7 end=(4.700, 0.232, -3.783)
+PASS Stair up x=4.9 end=(4.900, 4.032, 4.200)
+PASS Stair down x=4.9 end=(4.900, 0.232, -3.783)
+PASS Counter running end=(-2.000, 0.232, 2.610)
+PASS Table running end=(-3.374, 0.232, -1.900)
+PASS East wall end=(5.343, 0.232, -3.400)
+PASS Rear door end=(2.120, 0.232, 4.348)
+Visible mesh coverage: solid=1279, visual-only=18, missing=0
+RESULT: passed=10 failed=0 missing=0

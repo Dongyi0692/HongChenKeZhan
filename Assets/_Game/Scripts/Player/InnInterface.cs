@@ -72,7 +72,7 @@ namespace FengChenInn
             orbit = sceneCamera != null ? sceneCamera.GetComponent<OrbitCamera>() : null;
             bodyFont = Font.CreateDynamicFontFromOSFont(new[] { "Microsoft YaHei", "Noto Sans CJK SC", "SimHei" }, 32);
             titleFont = Font.CreateDynamicFontFromOSFont(new[] { "KaiTi", "SimSun", "Microsoft YaHei" }, 96);
-            root = Fill(transform, "风尘客栈界面");
+            root = Fill(transform, "红尘客栈界面");
             if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
             if (EventSystem.current == null)
                 new GameObject("Inn UI Events", typeof(EventSystem), typeof(InputSystemUIInputModule));
@@ -659,17 +659,7 @@ namespace FengChenInn
         private void BuildTitle()
         {
             var layer = CreateView(View.Title);
-            TitleBackdrop(layer);
-            var col = Place(layer, "标题版面", new Vector2(0, .5f), new Vector2(0, .5f), new Vector2(84, 5), new Vector2(650, 630));
-            Label(col, "雨 夜 客 栈     /     武 侠 小 品", 21, Amber, TopLeft, new Vector2(4, -36), new Vector2(580, 35));
-            Label(col, "风尘客栈", 100, Paper, TopLeft, new Vector2(-4, -82), new Vector2(600, 138), display: true);
-            Rule(col, TopLeft, new Vector2(4, -226), new Vector2(406, 1));
-            Label(col, "檐下灯未熄，风雨已入门。", 24, Muted, TopLeft, new Vector2(4, -244), new Vector2(560, 48));
-            Button(col, "开始游戏", TopLeft, new Vector2(4, -334), new Vector2(278, 60), StartGame, true);
-            Button(col, "设置", TopLeft, new Vector2(4, -410), new Vector2(278, 54), OpenSettings);
-            Button(col, "退出游戏", TopLeft, new Vector2(4, -479), new Vector2(278, 54), Quit);
-            Label(layer, "一更  /  客栈外", 22, Amber, TopRight, new Vector2(-64, -57), new Vector2(260, 38), TextAnchor.MiddleRight);
-            Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(84, 37), new Vector2(520, 28));
+            layer.gameObject.AddComponent<MainMenuV2>().Build(StartGame, OpenSettings, Quit);
         }
 
         private void BuildTutorial()

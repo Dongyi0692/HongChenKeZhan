@@ -1,0 +1,102 @@
+[
+  {
+    "path": "Assets/_Game/Art/Stage11Final/Stage11_Final.glb",
+    "bytes": 174187240,
+    "sha256": "6e0ac5bd8cdba0ee815d5a5525172ba3407d324c6baea2e6713dcab6bb2d4c20"
+  },
+  {
+    "path": "Assets/_Game/Art/Stage9HiddenDoor/Stage9_HiddenDoor.glb",
+    "bytes": 195171600,
+    "sha256": "ee76b3e5a936cdb3fe5c2be34d450a898c91090c83ff7a5b64472f3e5f9bce76"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_00.png",
+    "bytes": 2717365,
+    "sha256": "5140d03ad165834f5a8d047a58294fcee152d8dca08263805e22da4eeee9ec52"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_01.png",
+    "bytes": 8385,
+    "sha256": "822ddea14862ffd2b86b570d64f6c83a77ea1a3eec398a1becbea7686f236868"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_02.png",
+    "bytes": 18045,
+    "sha256": "e5aa5edcc1ad8e10a2c6c6162eb58a7442dad9e96c303bd08b3da3f3aba40203"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_03.png",
+    "bytes": 110406,
+    "sha256": "2f13f00e9b9f64885e2e02aef285ca49a8143fb8fd08a7c176b4ec0f6b1bfc11"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_04.png",
+    "bytes": 25649,
+    "sha256": "ee9d2536f3555576cee501258dbb8699487cbfe2e12713c7df2e9b3b3e58d2ce"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_05.png",
+    "bytes": 19151,
+    "sha256": "eddcb076f73ad9106fc0f218b3739067e0fed874068cc807ccc7ed81a7da4a1d"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_06.png",
+    "bytes": 10205,
+    "sha256": "0d020d44a3169b528c3cc99ea27cbf8d5784a7663db7b5768b111e49584a56ec"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_07.png",
+    "bytes": 8290,
+    "sha256": "f9ebfaf23c908ae76c9664f26bd31c7f340b2e7a3522ba3c26effcda74bfd3b2"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_08.png",
+    "bytes": 6336,
+    "sha256": "1894908d0e05889e1f60e68a5393cbfe7d4b155e9b92dec32c9f045f537116ab"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_09.png",
+    "bytes": 6680,
+    "sha256": "46709129616a8f4c2b3547ee87eb0d1bfbcfeacd55eab5787634df90aa3f0f08"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_10.png",
+    "bytes": 61018,
+    "sha256": "5250479d1ba0e7016379a50047d92bfc989fed1e1cd049224b4211327789cbe9"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_11.png",
+    "bytes": 65816,
+    "sha256": "1cb029aef222c5f603be048f348849550a3c8049e5d1f2a917475aeb35c8a325"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_12.png",
+    "bytes": 39233,
+    "sha256": "458bee005c490e27480cfd6192cc768113b1c1c49706ab85281de76a9be0cc3a"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_13.png",
+    "bytes": 40885,
+    "sha256": "c363c10dc3179e931b487999fc1b6f5a4c1869ed25d15e7155c49b845b886fff"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_14.png",
+    "bytes": 43141,
+    "sha256": "a75dbd41cc225ef5c19aba715de54fe4bd0e68a3c2d11909b0fab379fc9ffef5"
+  },
+  {
+    "path": "Assets/_Game/Resources/MainMenuV2/asset_15.png",
+    "bytes": 44330,
+    "sha256": "67ddd95fecede67cf07fea8d2ec5d47cd920cd1b995b4ce5d7c60909a52a602c"
+  },
+  {
+    "path": "Docs/Delivery/2026-11-16/evidence/menu_v2_1920x1080.png",
+    "bytes": 3099302,
+    "sha256": "ff802dcc2b12ec5c3811b3329ca4c1beb2cb27c4ec46163b75fee65f27470302"
+  },
+  {
+    "path": "Docs/Delivery/2026-11-16/evidence/play_hall.png",
+    "bytes": 1151304,
+    "sha256": "79dbcf3045ab4aabe8a9078c9d4a85bf034057ab6b43b7530847f79e803d9219"
+  }
+]

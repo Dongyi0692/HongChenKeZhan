@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/_Game/Scenes/InnDuel.unity
-    guid: 63138ef5a9bd9414ab5d3639d6536b46
+    path: Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity
+    guid: 105bc9b0bb14bad44adde95c1911cffa
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

@@ -7,4 +7,5 @@
 /.vs/
 *.csproj
 *.sln
+*.slnx
 *.user

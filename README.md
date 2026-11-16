@@ -1,6 +1,20 @@
-# 风尘客栈
+# 红尘客栈
 
-Unity 可编辑工程。使用 Unity Hub 添加本文件夹，编辑器版本为 **Unity 6.3 LTS（6000.3.25f1）**。打开 `Assets/_Game/Scenes/InnDuel.unity`，在 Unity 中点击 Play。
+Unity 可编辑工程。当前交付分支为 **`delivery/stage12-main-menu-v2`**，包含第二版主菜单、Stage12 雨夜客栈、碰撞及室内照明修复。
+
+使用 Unity Hub 添加仓库根文件夹，编辑器版本为 **Unity 6.3 LTS（6000.3.25f1）**。打开 **`Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`**，点击 Play，出现第二版主菜单后点击“开始游戏”。旧 `InnDuel.unity` 是历史版本，不是本次交付入口。
+
+**下载、导入、改动清单及给伙伴 Codex 的交接提示： [交付文档](Docs/Delivery/2026-11-16/HANDOFF.md)。**
+
+```powershell
+git lfs install
+git clone --branch delivery/stage12-main-menu-v2 https://github.com/Dongyi0692/HongChenKeZhan.git
+cd HongChenKeZhan
+git lfs pull
+git lfs fsck
+```
+
+请保留完整 `Assets`（含 `.meta`）、`Packages` 和 `ProjectSettings`，不要只复制 GLB 或场景文件。首次打开会重新生成 Library 并导入模型，请等待编译完成。
 
 项目中的大文件通过 Git LFS 保存。请安装 Git LFS 后再克隆，或在已有克隆内执行 `git lfs pull`。
 
