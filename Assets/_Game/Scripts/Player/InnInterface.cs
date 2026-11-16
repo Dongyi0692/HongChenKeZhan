@@ -56,6 +56,8 @@ namespace FengChenInn
         private InnEntranceDoors entrance;
         private CombatActor watchedPlayer;
         private float shortLineUntil, fightLength, arrivalAt, rescueAt, hintUntil;
+        private float battleStartFightLength;
+        private bool battleStartDoorOpen;
         private bool lightHit, heavyHit, defended;
         private RectTransform targetMarker;
         private readonly List<UnityEngine.UI.Image> targetStrokes = new();
@@ -357,6 +359,11 @@ namespace FengChenInn
 
         private void Restart(bool toTitle)
         {
+            if (!toTitle && (view == View.Defeat || duel.CanRetryCurrentBattle))
+            {
+                RetryCurrentBattle();
+                return;
+            }
             UnwatchCombatEvents();
             afterDialogue = null;
             lines = null;
@@ -367,8 +374,44 @@ namespace FengChenInn
             pendingBattle = PendingBattle.None;
             if (entrance != null) entrance.OpenRequested = false;
             shortLineUntil = fightLength = arrivalAt = rescueAt = 0f;
+            battleStartFightLength = 0f;
+            battleStartDoorOpen = false;
             lightHit = heavyHit = defended = hasHelped = heardAllyDown = resultStarted = false;
             Show(toTitle ? View.Title : View.Play);
+        }
+
+        private void RememberBattleStart()
+        {
+            battleStartFightLength = fightLength;
+            battleStartDoorOpen = entrance != null && entrance.OpenRequested;
+        }
+
+        private void RetryCurrentBattle()
+        {
+            if (!duel.RetryCurrentBattle())
+            {
+                // Never discard completed fights when a checkpoint cannot be restored.
+                defeatStats.text = "暂时无法恢复本段战斗。\n请检查角色站位与动作资源后再次重试。";
+                input.StoryAllowsCombat = false;
+                Show(View.Defeat);
+                return;
+            }
+            UnwatchCombatEvents();
+            afterDialogue = null;
+            lines = null;
+            pendingBattle = PendingBattle.None;
+            resultStarted = hasHelped = heardAllyDown = false;
+            shortLineUntil = arrivalAt = rescueAt = 0f;
+            fightLength = battleStartFightLength;
+            part = duel.Stage == DuelEncounter.EncounterStage.Tutorial ? StoryPart.TutorialFight
+                : duel.Stage == DuelEncounter.EncounterStage.EliteDuel ? StoryPart.EliteFight : StoryPart.ReturnToHelp;
+            if (part == StoryPart.TutorialFight) lightHit = heavyHit = defended = false;
+            if (entrance != null) entrance.OpenRequested = battleStartDoorOpen;
+            if (part == StoryPart.ReturnToHelp) rescueAt = Time.time;
+            input.StoryAllowsCombat = true;
+            WatchCombatEvents();
+            Show(View.Play);
+            Say("已从本段战斗重新开始。", 2.5f);
         }
 
         private bool IsCombatPart => part == StoryPart.TutorialFight || part == StoryPart.EliteFight
@@ -610,6 +653,7 @@ namespace FengChenInn
         private void BeginTutorialFight()
         {
             if (!duel.BeginTutorial()) { WaitForBattle(PendingBattle.Tutorial); return; }
+            RememberBattleStart();
             pendingBattle = PendingBattle.None;
             part = StoryPart.TutorialFight;
             input.StoryAllowsCombat = true;
@@ -619,6 +663,7 @@ namespace FengChenInn
         private void BeginEliteFight()
         {
             if (!duel.BeginEliteDuel()) { WaitForBattle(PendingBattle.Elite); return; }
+            RememberBattleStart();
             pendingBattle = PendingBattle.None;
             part = StoryPart.EliteFight;
             input.StoryAllowsCombat = true;
@@ -634,6 +679,7 @@ namespace FengChenInn
             input.StoryAllowsCombat = true;
             rescueAt = Time.time;
             if (entrance != null) entrance.OpenRequested = true;
+            RememberBattleStart();
             Show(View.Play);
             if (orbit != null) orbit.enabled = false;
             FrameActors(duel.EliteActor != null ? duel.EliteActor.transform : null,
@@ -668,7 +714,7 @@ namespace FengChenInn
             var failedPart = part;
             part = StoryPart.Finished;
             defeatStats.text = failedPart == StoryPart.TutorialFight ? "入栈受阻" : failedPart == StoryPart.EliteFight ? "交手落败" : "回援失利";
-            defeatStats.text += "\n重试将恢复人物、阵营与关卡状态。";
+            defeatStats.text += "\n从本段重新开始，已完成的战斗保留。";
             var script = failedPart == StoryPart.TutorialFight ? InnStoryScript.TutorialDefeat
                 : failedPart == StoryPart.EliteFight ? InnStoryScript.Defeat : InnStoryScript.RescueDefeat;
             OpenDialogue(() => Show(View.Defeat), script);
@@ -887,7 +933,7 @@ namespace FengChenInn
             if (fighter.IsMotionAvailable(CombatMotion.Dodge)) controls.Add("Shift   闪避，消耗体力");
             if (fighter.IsMotionAvailable(CombatMotion.Skill)) controls.Add("F   地面突进斩");
             controls.Add("E   交谈 / 推门    F1   查看操作");
-            controls.Add("Esc   暂停    R   从头重试");
+            controls.Add("Esc   暂停    R   战斗中重试本段 / 探索时重新开始");
             controls.Add("敌人身上的方框表示攻击目标；右侧提示命中或被格挡。");
             controls.Add("停止消耗体力的动作，等待恢复。留意对手起手，等收势再反击。");
             tutorialControls.text = string.Join("\n", controls);
@@ -1018,11 +1064,11 @@ namespace FengChenInn
         {
             var layer = CreateView(won ? View.Victory : View.Defeat);
             var frame = Panel(layer, won ? "雨夜余声" : "客栈折剑", won ? "风尘未歇" : "落败", 600, 408);
-            var result = Label(frame, won ? "交手结果  胜" : "交手结果  败\n重试将恢复人物与关卡状态。", 22, Paper,
+            var result = Label(frame, won ? "交手结果  胜" : "交手结果  败\n重试本段，已完成的战斗保留。", 22, Paper,
                 TopLeft, new Vector2(39, -141), new Vector2(524, 73));
             if (won) victoryStats = result;
             else defeatStats = result;
-            Button(frame, "重试   R", Top, new Vector2(0, -235), new Vector2(456, 52), () => Restart(false), true);
+            Button(frame, won ? "再玩一次   R" : "重试本段   R", Top, new Vector2(0, -235), new Vector2(456, 52), () => Restart(false), true);
             Button(frame, won ? "回到标题" : "退出游戏", Top, new Vector2(0, -303), new Vector2(456, 48),
                 won ? () => Restart(true) : Quit);
             Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(84, 37), new Vector2(520, 28));

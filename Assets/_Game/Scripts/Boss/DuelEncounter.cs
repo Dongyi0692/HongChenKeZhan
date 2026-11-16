@@ -27,6 +27,9 @@ namespace FengChenInn
         public Vector3 rescueArrivalPosition = new(0f, .05f, -5.8f);
         public CombatAttack[] eliteAttacks, gruntAttacks;
         public EncounterStage Stage { get; private set; } = EncounterStage.Arrival;
+        public EncounterStage RetryStage { get; private set; } = EncounterStage.Arrival;
+        public bool CanRetryCurrentBattle => checkpoint.Count > 1 && IsBattleStage(RetryStage)
+            && (Stage == EncounterStage.Failed || IsCombatActive && Stage == RetryStage);
         public bool EliteVictoryAchieved { get; private set; }
         public CombatActor PlayerActor { get; private set; }
         public CombatActor EliteActor { get; private set; }
@@ -93,6 +96,17 @@ namespace FengChenInn
         }
         readonly List<CombatActor> spawned = new();
         readonly List<CombatActor> enemies = new();
+        // Keep the same actors across retries: completed fights and ally allegiance
+        // must not be reconstructed by replaying earlier story transitions.
+        readonly List<BattleCheckpointActor> checkpoint = new();
+        sealed class BattleCheckpointActor
+        {
+            public CombatActor actor;
+            public Vector3 position;
+            public Quaternion rotation;
+            public CombatTeam team;
+            public int health;
+        }
         bool initialized, combatRunning, eliteRestored;
         float feedbackUntil;
         float entranceZ = float.NaN;
@@ -119,6 +133,8 @@ namespace FengChenInn
         {
             if (!initialized) { Initialize(); return; }
             StopCombat();
+            checkpoint.Clear();
+            RetryStage = EncounterStage.Arrival;
             foreach (var actor in spawned)
             {
                 if (actor == null) continue;
@@ -215,8 +231,138 @@ namespace FengChenInn
             PlayerActor.ControlLocked = false;
             EliteActor.ControlLocked = false;
             EliteActor.GetComponent<EnemyCombatAI>().SetCombatEnabled(true);
+            CaptureBattleCheckpoint(EncounterStage.Rescue);
             SetStage(EncounterStage.Rescue);
             return true;
+        }
+
+        static bool IsBattleStage(EncounterStage stage) => stage == EncounterStage.Tutorial
+            || stage == EncounterStage.EliteDuel || stage == EncounterStage.Rescue;
+
+        void CaptureBattleCheckpoint(EncounterStage stage)
+        {
+            RetryStage = stage;
+            checkpoint.Clear();
+            Capture(PlayerActor);
+            foreach (var enemy in enemies) Capture(enemy);
+            if (stage == EncounterStage.Rescue) Capture(EliteActor);
+
+            void Capture(CombatActor actor)
+            {
+                if (actor == null) return;
+                foreach (var saved in checkpoint) if (saved.actor == actor) return;
+                checkpoint.Add(new BattleCheckpointActor
+                {
+                    actor = actor, position = actor.transform.position, rotation = actor.transform.rotation,
+                    team = actor.Team,
+                    // The player and opponents get a fresh attempt. The ally keeps
+                    // the health granted when the rescue segment originally began.
+                    health = actor == PlayerActor || actor.Team == CombatTeam.Enemy ? -1 : actor.Health
+                });
+            }
+        }
+
+        public bool RetryCurrentBattle()
+        {
+            if (!CanRetryCurrentBattle || !CheckBindings()) return false;
+            foreach (var saved in checkpoint)
+                if (saved.actor == null || saved.actor.GetComponent<CharacterController>() == null)
+                { Show("当前战斗角色已丢失，无法重试"); return false; }
+
+            StopCombat();
+            if (!TryRestoreCheckpointPositions())
+            {
+                PlayerActor.ControlLocked = true;
+                SetStage(EncounterStage.Failed);
+                Show("重试站位被挡住，请移开障碍后再次重试");
+                return false;
+            }
+
+            Vector3 playerPosition = PlayerActor.transform.position;
+            Quaternion playerRotation = PlayerActor.transform.rotation;
+            foreach (var saved in checkpoint)
+            {
+                var actor = saved.actor;
+                actor.gameObject.SetActive(true);
+                actor.SetTeam(saved.team);
+                actor.ResetActor(saved.health);
+                actor.ControlLocked = true;
+                actor.GetComponent<EnemyCombatAI>()?.ResetBrain();
+            }
+            var fighter = PlayerActor.GetComponent<PrototypeFighter>();
+            if (fighter != null)
+            {
+                fighter.ResetPose();
+                fighter.PlaceForStory(playerPosition, playerRotation);
+            }
+
+            enemies.Clear();
+            combatRunning = true;
+            foreach (var saved in checkpoint)
+            {
+                var actor = saved.actor;
+                actor.ControlLocked = false;
+                if (actor.Team == CombatTeam.Enemy) enemies.Add(actor);
+                var brain = actor.GetComponent<EnemyCombatAI>();
+                if (brain != null)
+                {
+                    brain.SetCombatEnabled(true);
+                    if (RetryStage == EncounterStage.Rescue && actor.Team == CombatTeam.Enemy)
+                        brain.PreferOpeningTarget(EliteActor);
+                }
+                if (actor.Animation != null && actor.Animation.Ready && actor.Animation.HasMotion(CombatMotion.Idle))
+                    actor.Animation.Play(CombatMotion.Idle, .1f);
+            }
+            Feedback = "";
+            feedbackUntil = 0f;
+            SetStage(RetryStage);
+            return true;
+        }
+
+        bool TryRestoreCheckpointPositions()
+        {
+            var oldPositions = new Vector3[checkpoint.Count];
+            var oldRotations = new Quaternion[checkpoint.Count];
+            var colliders = new List<Collider>();
+            var enabledStates = new List<bool>();
+            for (int i = 0; i < checkpoint.Count; i++)
+            {
+                var actor = checkpoint[i].actor;
+                oldPositions[i] = actor.transform.position;
+                oldRotations[i] = actor.transform.rotation;
+                foreach (var collider in actor.GetComponentsInChildren<Collider>(true))
+                {
+                    colliders.Add(collider);
+                    enabledStates.Add(collider.enabled);
+                    collider.enabled = false;
+                }
+            }
+
+            bool placed = false;
+            try
+            {
+                foreach (var saved in checkpoint)
+                {
+                    var controller = saved.actor.GetComponent<CharacterController>();
+                    if (!ActorPlacement.TryPlace(controller, saved.position, saved.rotation, entranceZ)) return false;
+                    // Reserve each restored standing position before placing the
+                    // next actor, including previously defeated/hidden grunts.
+                    controller.enabled = true;
+                    Physics.SyncTransforms();
+                }
+                placed = true;
+                return true;
+            }
+            finally
+            {
+                foreach (var collider in colliders) if (collider != null) collider.enabled = false;
+                if (!placed)
+                    for (int i = 0; i < checkpoint.Count; i++)
+                        checkpoint[i].actor.transform.SetPositionAndRotation(oldPositions[i], oldRotations[i]);
+                for (int i = 0; i < colliders.Count; i++)
+                    if (colliders[i] != null) colliders[i].enabled = enabledStates[i];
+                Physics.SyncTransforms();
+            }
         }
         bool CheckBindings()
         {
@@ -257,6 +403,7 @@ namespace FengChenInn
             PlayerActor.ControlLocked = false;
             opponent.ControlLocked = false;
             opponent.GetComponent<EnemyCombatAI>().SetCombatEnabled(true);
+            CaptureBattleCheckpoint(stage);
             SetStage(stage);
         }
         bool TryRevealActor(CombatActor actor, Vector3 position)
