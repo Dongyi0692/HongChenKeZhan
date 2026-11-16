@@ -15,6 +15,8 @@
 
 本交付基于原 `main` 的 `77f4463`，未合入伙伴的 `combat-improvements`。下载时必须选交付分支；在本分支被合并之前，仅下载 `main` 看不到这些成果。
 
+合并请求：[PR #1](https://github.com/Dongyi0692/HongChenKeZhan/pull/1)。已在独立目录从 GitHub 完整克隆并运行 Git LFS 校验，104 个 LFS 路径取回成功；本次新增的 20 个二进制资源与 `asset-checksums.json` 全部一致。详情见 `evidence/github-download-verification.txt`。独立克隆未再次启动 Unity 或构建可执行程序。
+
 ## 这次完成了什么
 
 ### 场景、模型与碰撞

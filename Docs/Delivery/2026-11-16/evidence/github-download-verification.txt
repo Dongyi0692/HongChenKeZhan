@@ -1,0 +1,14 @@
+GitHub delivery verification
+Repository: https://github.com/Dongyi0692/HongChenKeZhan.git
+Branch: delivery/stage12-main-menu-v2
+Content commit verified: 368f3808254295cc2a6f7a03359ce5b70885a2d1
+Pull request: https://github.com/Dongyi0692/HongChenKeZhan/pull/1
+
+Method: independent single-branch shallow clone directly from GitHub, with Git LFS smudge enabled.
+Clone: exit code 0; all 104 LFS paths restored.
+git lfs fsck in the independent clone: OK.
+SHA256 and byte sizes for all 20 entries in asset-checksums.json: match (0 mismatches).
+Working tree after clone: clean.
+Local development Unity inspection: Stage12, missing scripts 0, menu textures 16/16, Stage12 build entry.
+
+This verifies repository/download completeness. The independent clone was not launched in a second Unity Editor or built into a standalone executable.
