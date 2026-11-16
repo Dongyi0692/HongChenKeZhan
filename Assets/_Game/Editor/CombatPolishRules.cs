@@ -171,6 +171,43 @@ public static class CombatPolishRules
                 "A long active frame samples bounded real bone poses with matching damage times");
             Check(Mathf.Abs(finalPoseTime - .56f) < .0001f && Mathf.Abs(player.AttackElapsed - .56f) < .0001f,
                 "Subsampling restores the actual final pose and root clock when no contact interrupts it");
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            Check(player.TryAttack(heavy), "Landing-interruption fixture starts a real attack");
+            Set(fighter, "State", PrototypeFighter.ActionState.HeavyAttack);
+            Set(fighter, "wasGrounded", false);
+            Set(fighter, "jumpedAt", Time.time - 1f);
+            Tick(fighter);
+            Check(fighter.IsGrounded && (bool)Field(fighter, "wasGrounded"),
+                "Landing-interruption fixture actually reacquires ground contact");
+            Check(player.IsAttacking && player.Animation.CurrentMotion == CombatMotion.Heavy
+                && (float)Field(fighter, "landingUntil") <= Time.time,
+                "A one-frame ground contact change cannot replace an attack with landing or impose a landing lock");
+            player.Animation.Play(CombatMotion.JumpLand, 0f);
+            typeof(CombatActor).GetMethod("LateUpdate", Hidden).Invoke(player, null);
+            Tick(fighter);
+            Check(!player.IsAttacking && fighter.State == PrototypeFighter.ActionState.Ready
+                && player.Animation.CurrentMotion != CombatMotion.Heavy,
+                "An externally replaced attack clip cancels its damage and unlocks control without restarting the combo");
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            Check(player.TryAttack(heavy), "Graph-loss fixture starts a real attack before disabling the graph");
+            player.Animation.enabled = false;
+            typeof(CombatActor).GetMethod("LateUpdate", Hidden).Invoke(player, null);
+            Check(!player.IsAttacking, "Losing the animation graph cannot leave an invisible attack armed");
+            player.Animation.enabled = true;
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            Check(player.TryAttack(heavy), "Normal-completion fixture starts a real attack");
+            Set(fighter, "State", PrototypeFighter.ActionState.HeavyAttack);
+            player.Animation.SampleMotionPose(CombatMotion.Heavy, heavy.duration);
+            typeof(CombatActor).GetMethod("LateUpdate", Hidden).Invoke(player, null);
+            Tick(fighter);
+            Check(!player.IsAttacking && fighter.State == PrototypeFighter.ActionState.Ready,
+                "A normally completed attack releases both actor and player action state");
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            var oversized = new CombatAttack { motion = CombatMotion.Heavy, duration = 20f };
+            Check(player.TryAttack(oversized), "Overlong-duration fixture starts a real attack");
+            player.Animation.SampleMotionPose(CombatMotion.Heavy, clip.length);
+            typeof(CombatActor).GetMethod("LateUpdate", Hidden).Invoke(player, null);
+            Check(!player.IsAttacking, "An overlong configured duration still releases at the actual clip end");
         }
         catch (Exception error) { result.failures.Add(error.GetBaseException().ToString()); }
         finally

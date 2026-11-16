@@ -20,7 +20,7 @@ public static class StageRetryVerification
         public string phase, outputPath, defeatScreenshot, entranceScreenshot;
         public bool entranceObservedOutside, entranceCrossedDoor, entranceCompleted, dialogueClearanceSatisfied;
         public float entranceDistanceTravelled;
-        public int checks, frameStart, frameEnd, runtimeErrors, battlesVerified, retriesVerified;
+        public int checks, frameStart, frameEnd, runtimeErrors, battlesVerified, retriesVerified, failureDialoguesVerified;
         public float gameTimeStart, gameTimeEnd, elapsedSeconds;
         public List<string> successes = new(), failures = new();
     }
@@ -35,7 +35,7 @@ public static class StageRetryVerification
     static readonly Dictionary<int, Vector3> checkpointPositions = new();
     static readonly List<CombatActor> opponents = new();
     static Vector3 playerStart, entrancePreviousPosition;
-    static bool entranceObserved;
+    static bool entranceObserved, failureDialogueVerified;
     static int entranceMovingFrames;
     static int stageIndex, attempt, phaseFrame, sentryId, eliteId, allyHealth;
     static double startedAt, phaseAt;
@@ -139,16 +139,19 @@ public static class StageRetryVerification
             {
                 case "Running":
                     if (Time.frameCount < phaseFrame + 3 || elapsed < .15d) return;
+                    failureDialogueVerified = false;
                     DirtyAndDefeat();
                     SetPhase("AwaitDefeat");
                     break;
                 case "AwaitDefeat":
+                    if (View == "Dialogue" && !failureDialogueVerified) VerifyFailureDialogue();
                     FinishDialogue();
                     if (View != "Defeat")
                     {
                         if (elapsed > 4d) Fail("Expected failure result; actual UI " + View + ", stage " + duel.Stage);
                         return;
                     }
+                    Check(failureDialogueVerified, ExpectedStage + " failure dialogue was inspected before continuing to the result");
                     Check(duel.Stage == DuelEncounter.EncounterStage.Failed && duel.RetryStage == ExpectedStage,
                         ExpectedStage + " failure retains correct checkpoint (attempt " + (attempt + 1) + ")");
                     if (stageIndex == 0 && attempt == 0)
@@ -319,6 +322,26 @@ public static class StageRetryVerification
         else Require(opponents[0].ReceiveDamage(player, 7, 0f, 0f, true), "Could not damage current opponent before failure.");
         Kill(player, opponents[opponents.Count - 1]);
         Check(duel.Stage == DuelEncounter.EncounterStage.Failed && player.IsDefeated, ExpectedStage + " uses the real player-defeat transition");
+    }
+
+    static void VerifyFailureDialogue()
+    {
+        string prefix = ExpectedStage + " failure dialogue " + (attempt + 1) + ": ";
+        CombatActor expected = stageIndex == 0 ? duel.TutorialActor : stageIndex == 1 ? duel.EliteActor
+            : opponents.Where(a => a != null && a.gameObject.activeInHierarchy && a.Team == CombatTeam.Enemy && !a.IsDefeated)
+                .OrderBy(a => (a.transform.position - player.transform.position).sqrMagnitude).FirstOrDefault();
+        var participant = (CombatActor)typeof(InnInterface).GetMethod("ResolveDialogueParticipant", Hidden).Invoke(ui, null);
+        Check(expected != null && participant == expected, prefix + "selects the surviving opponent from the current battle");
+        Check(participant.gameObject.activeInHierarchy && participant.Team == CombatTeam.Enemy && !participant.IsDefeated
+            && (stageIndex != 2 || participant != duel.EliteActor),
+            prefix + "excludes inactive actors, defeated enemies and the fallen allied elite");
+        var dialogueOrbit = (OrbitCamera)Field(ui, "orbit");
+        Check(dialogueOrbit != null && dialogueOrbit.enabled && dialogueOrbit.IsFramingActors
+            && (Transform)Field(dialogueOrbit, "frameA") == player.transform
+            && (Transform)Field(dialogueOrbit, "frameB") == participant.transform,
+            prefix + "actual camera frames the player and that same surviving opponent");
+        failureDialogueVerified = true;
+        report.failureDialoguesVerified++;
     }
 
     static void VerifyRetry()

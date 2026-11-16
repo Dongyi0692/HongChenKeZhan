@@ -114,6 +114,21 @@ public static class GruntCoordinationVerification
                 second.transform.position = camera.transform.position + camera.transform.forward * 4f - Vector3.up;
                 Check(CanStart(second), "An on-screen grunt can start attacking an unclaimed player target");
             }
+
+            // These isolated bodies have no floor beneath them, so retreat is
+            // correctly unsafe. Its pause must expire without starving combat.
+            first.SetCombatEnabled(true); Target(first, ally);
+            Vector3 toward = Vector3.forward * 1.1f;
+            ally.transform.position = first.transform.position + toward;
+            Physics.SyncTransforms();
+            var yieldMethod = typeof(EnemyCombatAI).GetMethod("GiveCloseContactSpace", Hidden);
+            bool Yield() => (bool)yieldMethod.Invoke(first, new object[] { toward, toward.magnitude, .016f });
+            Check(Yield() && first.SpacePathBlocked, "Unsafe retreat creates only a brief pause, without stepping off a ledge");
+            typeof(EnemyCombatAI).GetField("spacePauseUntil", Hidden).SetValue(first, Time.time - .01f);
+            Check(!Yield() && !first.GivingSpace, "After a blocked retreat pause, normal combat is no longer intercepted");
+            Check(!Yield(), "Persistent close contact cannot restart the same blocked-retreat loop");
+            first.ResetBrain(); first.SetCombatEnabled(true); Target(first, ally);
+            Check(Yield() && first.SpacePathBlocked, "Retry resets the one-attempt retreat guard for the next encounter");
         }
         catch (Exception error) { report.failures.Add(error.GetBaseException().ToString()); }
         finally

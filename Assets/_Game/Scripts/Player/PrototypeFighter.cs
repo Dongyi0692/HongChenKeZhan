@@ -375,7 +375,7 @@ namespace FengChenInn
             if (attack == null) return false;
             attack.motion = motion;
             if (useFullClipDurations)
-                attack.duration = animationDriver.MotionLength(motion, attack.duration) / Mathf.Max(.01f, attack.speed);
+                attack.duration = animationDriver.MotionLength(motion, attack.duration) / Mathf.Max(.05f, attack.speed);
             RefreshTarget(attack.range);
             if (!actor.TryAttack(attack)) return false;
             attackTarget = selectedTarget;
@@ -511,19 +511,42 @@ namespace FengChenInn
             }
             if (IsGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
             verticalVelocity += gravity * dt;
-            CollisionFlags flags = controller.Move(displacement + Vector3.up * (verticalVelocity * dt) + impact.Advance(dt));
+            CollisionFlags flags = MoveWithStepFallback(displacement + Vector3.up * (verticalVelocity * dt) + impact.Advance(dt));
             groundedFromMovement = (flags & CollisionFlags.Below) != 0;
             if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f) verticalVelocity = 0f;
             bool groundedNow = IsGrounded;
-            if (groundedNow && !wasGrounded && Time.time - jumpedAt > .05f)
+            if (groundedNow && !wasGrounded && Time.time - jumpedAt > .05f
+                && !MovementLocked && State == ActionState.Ready && (actor == null || !actor.IsAttacking))
             {
                 landingUntil = Time.time + landingBlendTime;
-                if (!MovementLocked && IsMotionAvailable(CombatMotion.JumpLand)) animationDriver.Play(CombatMotion.JumpLand, .07f);
+                if (IsMotionAvailable(CombatMotion.JumpLand)) animationDriver.Play(CombatMotion.JumpLand, .07f);
             }
             wasGrounded = groundedNow;
             if (finishingDodge) State = ActionState.Ready;
             UpdateAnimation(groundedNow, guarding);
             if (transform.position.y < -8f) ResetPose();
+        }
+        private CollisionFlags MoveWithStepFallback(Vector3 displacement)
+        {
+            Vector3 before = transform.position;
+            CollisionFlags flags = controller.Move(displacement);
+            Vector3 horizontal = Vector3.ProjectOnPlane(displacement, Vector3.up);
+            Vector3 travelled = Vector3.ProjectOnPlane(transform.position - before, Vector3.up);
+            // PhysX's auto-step can wedge the capsule against a sloping handrail:
+            // even movement away from it is then rejected. Retry only the missing
+            // horizontal movement without stepping; keep every collision enabled.
+            // Gravity has already been applied, and an airborne actor never retries.
+            if (controller.stepOffset <= 0f || horizontal.sqrMagnitude < .000001f
+                || (flags & (CollisionFlags.Sides | CollisionFlags.Below)) != (CollisionFlags.Sides | CollisionFlags.Below)
+                || travelled.sqrMagnitude >= horizontal.sqrMagnitude * .04f) return flags;
+            float step = controller.stepOffset;
+            try
+            {
+                controller.stepOffset = 0f;
+                flags |= controller.Move(horizontal - travelled);
+            }
+            finally { controller.stepOffset = step; }
+            return flags;
         }
         private void UpdateAnimation(bool grounded, bool guarding)
         {

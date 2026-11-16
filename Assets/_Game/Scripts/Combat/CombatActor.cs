@@ -233,7 +233,8 @@ namespace FengChenInn
             // A missing clip or weapon is a missing action, never a procedural replacement.
             if (Animation == null || !Animation.Ready || !Animation.HasMotion(definition.motion) || !HasWeapon) return false;
             attack = definition;
-            attack.duration = Mathf.Max(.05f, definition.duration);
+            float playableDuration = Animation.MotionLength(definition.motion) / Mathf.Max(.05f, definition.speed);
+            attack.duration = Mathf.Min(Mathf.Max(.05f, definition.duration), playableDuration);
             attackClock = 0f;
             attackFacing = transform.rotation;
             hasPreviousBlade = false;
@@ -322,9 +323,20 @@ namespace FengChenInn
             // The graph may begin evaluating one frame after an input request.
             // Independent += deltaTime used to lead the visible sword by that
             // entire first frame (71 ms in the live trace). Share its real clock.
-            if (Animation == null || !Animation.TryGetMotionTime(current.motion, out float clipTime)) return;
-            float end = Mathf.Min(current.duration, Mathf.Max(before, clipTime / speed));
-            if (end <= before) return;
+            if (Animation == null || !Animation.TryGetMotionTime(current.motion, out float clipTime))
+            {
+                // A landing/story/disabled-graph override is an interruption,
+                // never an attack that can remain armed without a playing clip.
+                CancelAttack();
+                return;
+            }
+            float finishAt = Mathf.Min(current.duration, Animation.MotionLength(current.motion) / speed);
+            float end = Mathf.Min(finishAt, Mathf.Max(before, clipTime / speed));
+            if (end <= before)
+            {
+                if (before >= finishAt) CancelAttack();
+                return;
+            }
             bool activeInterval = false;
             foreach (var window in windows)
                 if (window != null && window.end >= window.start && end >= window.start && before <= window.end)
@@ -368,7 +380,7 @@ namespace FengChenInn
                 // resume from it instead of jumping to the pre-evaluated end.
                 if (IsHitPaused) return;
             }
-            if (attack == current && attackClock >= current.duration) CancelAttack();
+            if (attack == current && attackClock >= finishAt) CancelAttack();
         }
 
         void BladeSegment(out Vector3 start, out Vector3 end)

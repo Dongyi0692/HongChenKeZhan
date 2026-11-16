@@ -12,17 +12,26 @@ namespace FengChenInn
         [Header("Readable group combat")]
         public bool coordinateGruntAttacks = true;
         [Min(0f)] public float sharedAttackGap = .28f;
+        [Header("Close-contact breathing room")]
+        [Min(0f)] public float closeContactBuffer = .16f;
+        [Range(.1f, .6f)] public float giveSpaceDistance = .4f;
+        [Range(.1f, .8f)] public float giveSpacePause = .35f;
         public CombatAttack[] attacks = System.Array.Empty<CombatAttack>();
         public bool CombatEnabled { get; private set; }
         public CombatActor Target { get; private set; }
         public Behaviour State { get; private set; }
         public CombatActor Actor { get; private set; }
+        public bool GivingSpace => givingSpace || spacePauseUntil > Time.time;
+        public bool SpacePathBlocked { get; private set; }
         CharacterController motor;
         float cooldown, verticalVelocity, retargetClock;
         bool groundedFromGravity;
         int nextAttack;
         CombatActor openingTarget;
         CombatActor reservedTarget;
+        bool givingSpace, spaceAttempted;
+        CombatActor spaceTarget;
+        float spaceRemaining, spaceEndsAt, spacePauseUntil;
         static readonly Dictionary<CombatActor, EnemyCombatAI> attackers = new();
         static readonly Dictionary<CombatActor, float> nextOpening = new();
 
@@ -38,6 +47,7 @@ namespace FengChenInn
             CombatEnabled = value;
             Target = null;
             openingTarget = null;
+            ResetSpaceYield();
             Actor.CancelAttack();
             Actor.Guarding = false;
             cooldown = value ? .3f : 0f;
@@ -49,6 +59,7 @@ namespace FengChenInn
             ReleaseAttackTurn();
             Target = null;
             openingTarget = null;
+            ResetSpaceYield();
             Actor.CancelAttack();
             cooldown = .35f;
         }
@@ -115,6 +126,9 @@ namespace FengChenInn
             Vector3 toward = Vector3.ProjectOnPlane(Target.transform.position - transform.position, Vector3.up);
             Face(toward, dt);
             float distance = toward.magnitude;
+            // The attack branch above owns its complete clip. Only yield after
+            // it finishes (or before a fresh attack), never cancel a live swing.
+            if (GiveCloseContactSpace(toward, distance, dt)) return;
             if (distance > engageDistance)
             {
                 State = Behaviour.Approach;
@@ -137,11 +151,133 @@ namespace FengChenInn
                     {
                         ClaimAttackTurn();
                         nextAttack++;
+                        spaceAttempted = false;
                         openingTarget = null;
                     }
                     else cooldown = .5f;
                 }
             }
+        }
+
+        void ResetSpaceYield()
+        {
+            givingSpace = false;
+            spaceAttempted = false;
+            spaceTarget = null;
+            spaceRemaining = spaceEndsAt = spacePauseUntil = 0f;
+            SpacePathBlocked = false;
+        }
+
+        bool GiveCloseContactSpace(Vector3 toward, float distance, float dt)
+        {
+            if (spacePauseUntil > Time.time)
+            { State = Behaviour.Recovery; SetLocomotion(0f); return true; }
+            var targetMotor = Target.GetComponent<CharacterController>();
+            if (targetMotor == null || !targetMotor.enabled) { ResetSpaceYield(); return false; }
+            float contact = WorldRadius(motor) + WorldRadius(targetMotor) + closeContactBuffer;
+            if (spaceTarget != Target || distance >= contact + giveSpaceDistance)
+            { spaceAttempted = false; spaceTarget = Target; }
+            if (!givingSpace)
+            {
+                // One attempt per attack/close approach. A blocked retreat must
+                // not restart its pause forever and starve normal combat.
+                if (distance >= contact || spaceAttempted) return false;
+                SpacePathBlocked = false;
+                spaceAttempted = true;
+                givingSpace = true;
+                spaceRemaining = giveSpaceDistance;
+                spaceEndsAt = Time.time + .6f;
+            }
+            State = Behaviour.Recovery;
+            if (Time.time >= spaceEndsAt || spaceRemaining <= .015f
+                || distance >= contact + giveSpaceDistance * .75f)
+            { EndSpaceYield(); return true; }
+
+            // Stay on the current floor/small downward step. Gravity remains
+            // active; this path never writes a transform or disables a collider.
+            Vector3 away = distance > .01f ? -toward / distance : -transform.forward;
+            float step = Mathf.Min(spaceRemaining, 1.1f * dt, .08f);
+            Vector3 direction = Vector3.zero;
+            foreach (float angle in SpaceAngles)
+            {
+                Vector3 candidate = Quaternion.Euler(0f, angle, 0f) * away;
+                if (SafeSpacePath(candidate, Mathf.Max(.18f, step + .06f)))
+                { direction = candidate; break; }
+            }
+            if (direction.sqrMagnitude < .01f)
+            {
+                // No safe exit: wait, then retry rather than forcing through a
+                // body/wall or attacking repeatedly against the pinned player.
+                SpacePathBlocked = true;
+                EndSpaceYield();
+                return true;
+            }
+            Vector3 before = transform.position;
+            motor.Move(direction * step);
+            float moved = Vector3.ProjectOnPlane(transform.position - before, Vector3.up).magnitude;
+            spaceRemaining -= moved;
+            SetLocomotion(moved / Mathf.Max(.001f, dt));
+            if (moved < step * .2f)
+            { SpacePathBlocked = true; EndSpaceYield(); }
+            return true;
+        }
+
+        static readonly float[] SpaceAngles = { 0f, 45f, -45f, 70f, -70f };
+
+        void EndSpaceYield()
+        {
+            givingSpace = false;
+            spacePauseUntil = Time.time + giveSpacePause;
+            cooldown = Mathf.Max(cooldown, giveSpacePause);
+            SetLocomotion(0f);
+        }
+
+        static float WorldRadius(CharacterController controller)
+        {
+            Vector3 scale = controller.transform.lossyScale;
+            return controller.radius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+        }
+
+        bool SafeSpacePath(Vector3 direction, float distance)
+        {
+            Vector3 center = transform.TransformPoint(motor.center);
+            float radius = WorldRadius(motor);
+            float half = Mathf.Max(radius, motor.height * Mathf.Abs(transform.lossyScale.y) * .5f);
+            Vector3 ends = Vector3.up * (half - radius);
+            // Slightly inset the query to avoid treating touching the floor as
+            // a blocked horizontal path; the actual Move keeps the full capsule.
+            float queryRadius = Mathf.Max(.05f, radius - .01f);
+            foreach (RaycastHit hit in Physics.CapsuleCastAll(center - ends, center + ends,
+                queryRadius, direction, distance, ~0, QueryTriggerInteraction.Ignore))
+                if (!hit.transform.IsChildOf(transform)) return false;
+            Vector3 destination = center + direction * distance;
+            foreach (Collider hit in Physics.OverlapCapsule(destination - ends, destination + ends,
+                queryRadius, ~0, QueryTriggerInteraction.Ignore))
+                if (!hit.transform.IsChildOf(transform)) return false;
+
+            float feetY = center.y - half;
+            Vector3 side = Vector3.Cross(Vector3.up, direction) * (radius * .65f);
+            return SafeSpaceFooting(destination, feetY)
+                && SafeSpaceFooting(destination + side, feetY)
+                && SafeSpaceFooting(destination - side, feetY);
+        }
+
+        bool SafeSpaceFooting(Vector3 point, float feetY)
+        {
+            // A capsule resting on the rounded edge of a low bench may sit a
+            // skin-width above its nominal step height. Include that margin,
+            // while still rejecting stairs/ledges with a substantial drop.
+            float maxDrop = Mathf.Min(.35f, Mathf.Max(.12f, motor.stepOffset + motor.skinWidth + .06f));
+            point.y = feetY + .08f;
+            float floor = float.NegativeInfinity;
+            foreach (RaycastHit hit in Physics.RaycastAll(point, Vector3.down, maxDrop + .08f,
+                ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.transform.IsChildOf(transform) || hit.collider.GetComponentInParent<CombatActor>() != null
+                    || hit.normal.y < Mathf.Cos(motor.slopeLimit * Mathf.Deg2Rad)) continue;
+                floor = Mathf.Max(floor, hit.point.y);
+            }
+            return !float.IsNegativeInfinity(floor) && floor >= feetY - maxDrop && floor <= feetY + .08f;
         }
 
         bool CanStartAttackTurn()

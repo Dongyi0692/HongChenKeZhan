@@ -25,6 +25,9 @@ public static class EnemyAttackPlaythrough
         public int firstFrame, lastFrame, actualHits, actualDamage, runtimeErrors;
         public float elapsedSeconds, firstGameTime, lastGameTime;
         public Vector3 playerPosition, gruntPosition;
+        public Vector3 lastPlayerPosition, lastGruntPosition, targetViewport;
+        public string lastAiState;
+        public bool givingSpace, spacePathBlocked;
         public List<Swing> swings = new();
         public List<string> failures = new();
     }
@@ -186,6 +189,10 @@ public static class EnemyAttackPlaythrough
     {
         report.elapsedSeconds = (float)(EditorApplication.timeSinceStartup - startedAt);
         report.lastFrame = Time.frameCount; report.lastGameTime = Time.time;
+        if(player!=null)report.lastPlayerPosition=player.transform.position;
+        if(grunt!=null)report.lastGruntPosition=grunt.transform.position;
+        if(brain!=null){report.lastAiState=brain.State.ToString();report.givingSpace=brain.GivingSpace;report.spacePathBlocked=brain.SpacePathBlocked;}
+        if(Camera.main!=null&&grunt!=null)report.targetViewport=Camera.main.WorldToViewportPoint(grunt.transform.position+Vector3.up);
     }
     static void InvokeUi(string method, params object[] args) => typeof(InnInterface).GetMethod(method, Hidden).Invoke(ui, args);
     static void Finish()

@@ -755,14 +755,43 @@ namespace FengChenInn
             Show(View.Dialogue);
             if (frameActors)
             {
-                Transform target = (part == StoryPart.Departure || part == StoryPart.ReturnToHelp || part == StoryPart.Finished)
-                    && duel.EliteActor != null ? duel.EliteActor.transform
-                    : duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null;
+                CombatActor participant = ResolveDialogueParticipant();
+                Transform target = participant != null ? participant.transform : null;
                 FaceDialogueParticipants(target);
                 FrameActors(fighter.transform, target);
             }
             RenderLine();
         }
+
+        private CombatActor ResolveDialogueParticipant()
+        {
+            if (duel.Stage == DuelEncounter.EncounterStage.Failed)
+            {
+                // Finished is shared by failure and the final farewell. It does
+                // not mean the elite has appeared, nor that he is still hostile.
+                CombatActor opponent = duel.RetryStage == DuelEncounter.EncounterStage.Tutorial ? duel.TutorialActor
+                    : duel.RetryStage == DuelEncounter.EncounterStage.EliteDuel ? duel.EliteActor : null;
+                if (IsLivingDialogueEnemy(opponent)) return opponent;
+                if (IsLivingDialogueEnemy(duel.ActiveEnemy)) return duel.ActiveEnemy;
+                CombatActor nearest = null;
+                float nearestDistance = float.PositiveInfinity;
+                foreach (var candidate in duel.EnemyActors)
+                {
+                    if (!IsLivingDialogueEnemy(candidate)) continue;
+                    float distance = (candidate.transform.position - fighter.transform.position).sqrMagnitude;
+                    if (distance < nearestDistance) { nearest = candidate; nearestDistance = distance; }
+                }
+                return nearest;
+            }
+            bool speaksWithElite = part == StoryPart.Departure || part == StoryPart.ReturnToHelp || part == StoryPart.Finished;
+            if (speaksWithElite && duel.EliteActor != null && duel.EliteActor.gameObject.activeInHierarchy)
+                return duel.EliteActor;
+            CombatActor active = duel.ActiveEnemy;
+            return active != null && active.gameObject.activeInHierarchy ? active : null;
+        }
+
+        private static bool IsLivingDialogueEnemy(CombatActor actor)
+            => actor != null && actor.gameObject.activeInHierarchy && actor.Team == CombatTeam.Enemy && !actor.IsDefeated;
 
         private void FrameActors(Transform a, Transform b)
         {
