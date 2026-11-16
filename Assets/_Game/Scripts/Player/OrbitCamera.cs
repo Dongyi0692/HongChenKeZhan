@@ -33,7 +33,8 @@ namespace FengChenInn
             Vector3 direction = rotation * Vector3.back;
             float safeDistance = distance;
             foreach (RaycastHit hit in Physics.SphereCastAll(focus, 0.16f, direction, distance, ~0, QueryTriggerInteraction.Ignore))
-                if (!hit.transform.IsChildOf(target)) safeDistance = Mathf.Min(safeDistance, Mathf.Max(0.45f, hit.distance - 0.12f));
+                if (!hit.transform.IsChildOf(target) && hit.collider.GetComponentInParent<CombatActor>() == null)
+                    safeDistance = Mathf.Min(safeDistance, Mathf.Max(0.45f, hit.distance - 0.12f));
             transform.SetPositionAndRotation(focus + direction * safeDistance, rotation);
         }
     }

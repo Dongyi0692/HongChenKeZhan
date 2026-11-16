@@ -34,6 +34,17 @@ namespace FengChenInn
         public AholoAnimationDriver animationDriver;
         [Tooltip("Keep the whole clip. Mark damage windows in seconds after previewing its sword path.")]
         public bool useFullClipDurations = true;
+        [Header("Attack direction assistance")]
+        public bool enableTargetAssist = true;
+        [Min(.1f)] public float targetAssistDistance = 2.5f;
+        [Range(5f, 85f)] public float targetAssistHalfAngle = 65f;
+        [Min(0f)] public float attackTurnSpeed = 720f;
+        [Range(0f, .3f)] public float attackTurnTime = .14f;
+        [Header("Recovery control")]
+        [Tooltip("Allow a new input after the final damage window; the full animation still finishes at rest.")]
+        [Range(0f, .5f)] public float lightRecoveryDelay = .12f;
+        [Range(0f, .5f)] public float heavyRecoveryDelay = .18f;
+        [Range(0f, .5f)] public float skillRecoveryDelay = .16f;
         public CombatAttack lightAttack = new CombatAttack
         {
             motion = CombatMotion.Light, damage = 18, duration = .9f,
@@ -106,9 +117,15 @@ namespace FengChenInn
         public int SkillCount { get; private set; }
         public int GuardCount { get; private set; }
         public event Action<CombatMotion> ActionPerformed;
+        public CombatActor SelectedTarget => CombatTargeting.IsValid(actor, actor != null && actor.IsAttacking ? attackTarget : selectedTarget)
+            ? (actor.IsAttacking ? attackTarget : selectedTarget) : null;
+        public bool CanExitAttackRecovery => actor != null && actor.IsAttacking && !MovementLocked
+            && actor.AttackElapsed >= actor.LastHitTime + RecoveryDelay(actor.CurrentAttack.motion);
         private enum BufferedAction { None, Jump, Light, Heavy, Dodge, Skill }
         private CharacterController controller;
         private CombatActor actor, subscribedActor;
+        private CombatActor selectedTarget, attackTarget;
+        private Vector3 attackIntent;
         private DuelEncounter encounter;
         private Vector3 spawnPosition, planarVelocity, dodgeDirection, skillDirection;
         private Quaternion spawnRotation;
@@ -223,6 +240,41 @@ namespace FengChenInn
         public bool Attack(bool heavy) => Request(heavy ? BufferedAction.Heavy : BufferedAction.Light);
         public bool Dodge() => Request(BufferedAction.Dodge);
         public bool Skill() => Request(BufferedAction.Skill);
+        private float RecoveryDelay(CombatMotion motion) => motion == CombatMotion.Heavy ? heavyRecoveryDelay
+            : motion == CombatMotion.Skill ? skillRecoveryDelay : lightRecoveryDelay;
+
+        private void RefreshTarget(float range)
+        {
+            if (!enableTargetAssist || actor == null || actor.IsDefeated || actor.ControlLocked
+                || encounter != null && !encounter.IsCombatActive)
+            { selectedTarget = null; return; }
+            Vector3 intent = CameraMovement();
+            if (intent.sqrMagnitude < .01f) intent = transform.forward;
+            selectedTarget = CombatTargeting.Select(actor, Camera.main, intent,
+                Mathf.Min(targetAssistDistance, range + .35f), targetAssistHalfAngle, selectedTarget);
+        }
+
+        private void UpdateAttackFacing(float dt)
+        {
+            if (actor == null || !actor.IsAttacking) return;
+            if (!enableTargetAssist || !CombatTargeting.IsValid(actor, attackTarget))
+            { attackTarget = null; return; }
+            Vector3 toward = Vector3.ProjectOnPlane(attackTarget.transform.position - transform.position, Vector3.up);
+            if (toward.sqrMagnitude < .001f || toward.magnitude > Mathf.Min(targetAssistDistance, actor.CurrentAttack.range + .35f)
+                || Vector3.Angle(attackIntent, toward) > targetAssistHalfAngle || !actor.HasLineOfSight(attackTarget))
+            { attackTarget = null; return; }
+            if (MovementLocked || actor.AttackElapsed >= Mathf.Min(attackTurnTime, actor.FirstHitTime * .75f)) return;
+            actor.SetAttackFacing(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toward), attackTurnSpeed * dt));
+            skillDirection = transform.forward;
+        }
+
+        private void ExitAttackRecovery()
+        {
+            actor.CancelAttack();
+            attackTarget = null;
+            State = ActionState.Ready;
+            actionTime = 0f;
+        }
         private bool Request(BufferedAction requested)
         {
             if (TryExecute(requested)) { queuedAction = BufferedAction.None; return true; }
@@ -244,6 +296,17 @@ namespace FengChenInn
         };
         private bool TryExecute(BufferedAction requested)
         {
+            CombatAttack requestedAttack = requested == BufferedAction.Heavy ? heavyAttack
+                : requested == BufferedAction.Skill ? skillAttack : requested == BufferedAction.Light ? lightAttack : null;
+            // Never cut a multi-hit combo between its individual hit windows.
+            // Unavailable/costly inputs must not cancel the current action for free.
+            if (CanExitAttackRecovery && IsGrounded && Time.time >= landingUntil
+                && (requested == BufferedAction.Jump ? CanAnimateJump && !IsGuarding && Stamina >= jumpStaminaCost
+                    : IsMotionAvailable(MotionFor(requested))
+                        && (requested == BufferedAction.Dodge || requestedAttack != null && actor.HasWeapon)
+                        && (requested != BufferedAction.Dodge || Stamina >= dodgeStaminaCost)
+                        && (requested != BufferedAction.Skill || Time.time >= skillReadyAt)))
+                ExitAttackRecovery();
             if (MovementLocked || State != ActionState.Ready || Time.time < landingUntil) return false;
             if (requested == BufferedAction.Jump)
             {
@@ -285,7 +348,11 @@ namespace FengChenInn
             attack.motion = motion;
             if (useFullClipDurations)
                 attack.duration = animationDriver.MotionLength(motion, attack.duration) / Mathf.Max(.01f, attack.speed);
+            RefreshTarget(attack.range);
             if (!actor.TryAttack(attack)) return false;
+            attackTarget = selectedTarget;
+            attackIntent = CameraMovement();
+            if (attackIntent.sqrMagnitude < .01f) attackIntent = transform.forward;
             GuardRequested = false;
             actor.Guarding = false;
             State = requested == BufferedAction.Heavy ? ActionState.HeavyAttack
@@ -316,6 +383,9 @@ namespace FengChenInn
             float dt = Time.deltaTime;
             if (dt <= 0f || controller == null || !controller.enabled) return;
             if (actor == null || animationDriver == null) RefreshBindings();
+            if (actor == null || !actor.IsAttacking)
+                RefreshTarget(Mathf.Max(lightAttack != null ? lightAttack.range : 0f, heavyAttack != null ? heavyAttack.range : 0f));
+            UpdateAttackFacing(dt);
             CrouchRequested = false;
             if (IsGrounded) lastGroundedAt = Time.time;
             float previousActionTime = actionTime;
@@ -324,6 +394,13 @@ namespace FengChenInn
                 && (actor == null || !actor.IsAttacking)) State = ActionState.Ready;
             bool finishingDodge = State == ActionState.Dodge && actionTime >= dodgeDuration;
             if (MovementLocked) { State = ActionState.Ready; queuedAction = BufferedAction.None; }
+            bool recoverToGuard = CanExitAttackRecovery && GuardRequested && IsGrounded && !guardExhausted
+                && (guardStaminaPerSecond <= 0f || Stamina > .001f) && IsMotionAvailable(CombatMotion.Guard);
+            // A defensive hold supersedes a previously queued attack, but not a newer dodge.
+            if (recoverToGuard && (queuedAction == BufferedAction.Light || queuedAction == BufferedAction.Heavy || queuedAction == BufferedAction.Skill))
+                queuedAction = BufferedAction.None;
+            if (CanExitAttackRecovery && (MoveInput.sqrMagnitude > .01f || recoverToGuard))
+                ExitAttackRecovery();
             if (queuedAction != BufferedAction.None)
             {
                 if (Time.time > queuedUntil) queuedAction = BufferedAction.None;
@@ -438,6 +515,7 @@ namespace FengChenInn
             MoveInput = Vector2.zero;
             RunRequested = GuardRequested = CrouchRequested = false;
             queuedAction = BufferedAction.None;
+            selectedTarget = attackTarget = null;
             if (actor != null) actor.Guarding = false;
         }
         public void ResetPose()

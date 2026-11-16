@@ -57,6 +57,14 @@ namespace FengChenInn
         private CombatActor watchedPlayer;
         private float shortLineUntil, fightLength, arrivalAt, rescueAt, hintUntil;
         private bool lightHit, heavyHit, defended;
+        private RectTransform targetMarker;
+        private readonly List<UnityEngine.UI.Image> targetStrokes = new();
+        private UnityEngine.UI.Text attackFeedback, defenseFeedback;
+        private float attackFeedbackUntil, defenseFeedbackUntil, targetFlashUntil, nextFeedbackSoundAt;
+        private CombatActor lastHitTarget;
+        private AudioSource feedbackAudio;
+        private AudioClip strikeSound, blockSound, hurtSound;
+        private readonly RaycastHit[] markerObstructions = new RaycastHit[32];
 
         public void Initialize(PrototypeFighter player, DuelEncounter encounter)
         {
@@ -133,19 +141,136 @@ namespace FengChenInn
             UpdatePlay(keys != null && keys.eKey.wasPressedThisFrame);
         }
 
+        // Project after the camera and fighter Update, so the marker and health
+        // bar both describe the target selected for this frame.
+        private void LateUpdate()
+        {
+            if (!initialized) return;
+            bool battle = view == View.Play && IsCombatPart && duel.IsCombatActive;
+            CombatActor enemy = battle ? fighter.SelectedTarget : null;
+            bool hasTarget = enemy != null && enemy.isActiveAndEnabled && !enemy.IsDefeated
+                && !enemy.ControlLocked && duel.PlayerActor != null && duel.PlayerActor.IsHostileTo(enemy);
+            rivalPanel.gameObject.SetActive(hasTarget);
+            if (hasTarget)
+            {
+                rivalFill.fillAmount = (float)enemy.Health / Mathf.Max(1, enemy.MaxHealth);
+                rivalValue.text = $"{enemy.Health} / {enemy.MaxHealth}";
+                rivalName.text = enemy.DisplayName;
+            }
+            Vector2 markerPosition = default;
+            bool showMarker = hasTarget && TryProjectTarget(enemy, out markerPosition);
+            targetMarker.gameObject.SetActive(showMarker);
+            if (showMarker)
+            {
+                targetMarker.anchoredPosition = markerPosition;
+                Color color = enemy == lastHitTarget && Time.unscaledTime < targetFlashUntil ? Amber : Paper;
+                foreach (var stroke in targetStrokes) stroke.color = color;
+            }
+            UpdateFeedbackLabel(attackFeedback, battle, attackFeedbackUntil);
+            UpdateFeedbackLabel(defenseFeedback, battle, defenseFeedbackUntil);
+        }
+
+        private bool TryProjectTarget(CombatActor enemy, out Vector2 position)
+        {
+            position = default;
+            if (sceneCamera == null) sceneCamera = Camera.main;
+            if (sceneCamera == null || !duel.PlayerActor.HasLineOfSight(enemy)) return false;
+            Vector3 point = enemy.transform.position + Vector3.up * 1.25f;
+            Vector3 viewport = sceneCamera.WorldToViewportPoint(point);
+            if (viewport.z <= 0f || viewport.x < .03f || viewport.x > .97f || viewport.y < .03f || viewport.y > .97f)
+                return false;
+            Vector3 fromCamera = point - sceneCamera.transform.position;
+            int count = Physics.RaycastNonAlloc(sceneCamera.transform.position, fromCamera.normalized,
+                markerObstructions, fromCamera.magnitude, ~0, QueryTriggerInteraction.Ignore);
+            // A full buffer cannot prove visibility; avoid drawing through a wall.
+            if (count == markerObstructions.Length) return false;
+            for (int i = 0; i < count; i++)
+            {
+                Transform obstacle = markerObstructions[i].transform;
+                if (!obstacle.IsChildOf(enemy.transform) && !obstacle.IsChildOf(fighter.transform)) return false;
+            }
+            var canvas = GetComponent<Canvas>();
+            Camera uiCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(views[View.Play],
+                sceneCamera.WorldToScreenPoint(point), uiCamera, out position);
+        }
+
+        private static void UpdateFeedbackLabel(UnityEngine.UI.Text label, bool battle, float until)
+        {
+            bool visible = battle && Time.unscaledTime < until;
+            label.transform.parent.gameObject.SetActive(visible);
+            if (!visible) return;
+            Color color = label.color;
+            color.a = Mathf.Clamp01((until - Time.unscaledTime) / .18f);
+            label.color = color;
+        }
+
         private void WatchCombatEvents()
         {
             if (duel.PlayerActor != watchedPlayer)
             {
-                if (watchedPlayer != null) watchedPlayer.Blocked -= OnPlayerBlocked;
+                UnwatchPlayerEvents();
                 watchedPlayer = duel.PlayerActor;
-                if (watchedPlayer != null) watchedPlayer.Blocked += OnPlayerBlocked;
+                if (watchedPlayer != null)
+                {
+                    watchedPlayer.Blocked += OnPlayerBlocked;
+                    watchedPlayer.HitLanded += OnPlayerHitLanded;
+                    watchedPlayer.AttackBlocked += OnPlayerAttackBlocked;
+                    watchedPlayer.Damaged += OnPlayerDamaged;
+                }
             }
             foreach (var actor in duel.EnemyActors)
                 if (actor != null && watchedEnemies.Add(actor)) actor.Damaged += OnEnemyDamaged;
         }
 
-        private void OnPlayerBlocked(CombatActor source) { if (part == StoryPart.TutorialFight) defended = true; }
+        private void OnPlayerBlocked(CombatActor source)
+        {
+            if (part == StoryPart.TutorialFight) defended = true;
+            ShowCombatFeedback(false, "格挡成功", Amber, blockSound);
+        }
+
+        private void OnPlayerHitLanded(CombatActor target, int damage)
+        {
+            if (target == null || damage <= 0 || !duel.PlayerActor.IsHostileTo(target)) return;
+            lastHitTarget = target;
+            targetFlashUntil = Time.unscaledTime + .14f;
+            ShowCombatFeedback(true, $"命中 · {damage}", Paper, strikeSound);
+        }
+
+        private void OnPlayerAttackBlocked(CombatActor target)
+        {
+            if (target != null && duel.PlayerActor.IsHostileTo(target))
+                ShowCombatFeedback(true, "被格挡", Amber, blockSound);
+        }
+
+        private void OnPlayerDamaged(CombatActor source, int damage)
+        {
+            if (damage > 0) ShowCombatFeedback(false, $"受击 · −{damage}", Red, hurtSound);
+        }
+
+        private void ShowCombatFeedback(bool offense, string text, Color color, AudioClip sound)
+        {
+            if (!isActiveAndEnabled || view != View.Play || !IsCombatPart || !duel.IsCombatActive) return;
+            var label = offense ? attackFeedback : defenseFeedback;
+            label.text = text;
+            label.color = color;
+            if (offense) attackFeedbackUntil = Time.unscaledTime + .7f;
+            else defenseFeedbackUntil = Time.unscaledTime + .7f;
+            if (feedbackAudio != null && sound != null && Time.unscaledTime >= nextFeedbackSoundAt)
+            {
+                feedbackAudio.PlayOneShot(sound);
+                nextFeedbackSoundAt = Time.unscaledTime + .045f;
+            }
+        }
+
+        private void UnwatchPlayerEvents()
+        {
+            if (watchedPlayer == null) return;
+            watchedPlayer.Blocked -= OnPlayerBlocked;
+            watchedPlayer.HitLanded -= OnPlayerHitLanded;
+            watchedPlayer.AttackBlocked -= OnPlayerAttackBlocked;
+            watchedPlayer.Damaged -= OnPlayerDamaged;
+        }
 
         private void OnEnemyDamaged(CombatActor source, int amount)
         {
@@ -156,7 +281,7 @@ namespace FengChenInn
 
         private void UnwatchCombatEvents()
         {
-            if (watchedPlayer != null) watchedPlayer.Blocked -= OnPlayerBlocked;
+            UnwatchPlayerEvents();
             watchedPlayer = null;
             foreach (var actor in watchedEnemies) if (actor != null) actor.Damaged -= OnEnemyDamaged;
             watchedEnemies.Clear();
@@ -166,6 +291,8 @@ namespace FengChenInn
         {
             if (!focused && initialized && view == View.Play) Show(View.Pause);
         }
+
+        private void OnDisable() => ClearCombatFeedback();
 
         private void OnDestroy()
         {
@@ -177,10 +304,14 @@ namespace FengChenInn
             Destroy(panelGrain);
             Destroy(bodyFont);
             Destroy(titleFont);
+            Destroy(strikeSound);
+            Destroy(blockSound);
+            Destroy(hurtSound);
         }
 
         private void Show(View next)
         {
+            ClearCombatFeedback();
             view = next;
             foreach (var pair in views) pair.Value.gameObject.SetActive(pair.Key == next);
             bool play = next == View.Play;
@@ -198,6 +329,16 @@ namespace FengChenInn
             if (next == View.Tutorial) UpdateTutorialControls();
             if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
             if (play) hintUntil = Time.unscaledTime + 6f;
+        }
+
+        private void ClearCombatFeedback()
+        {
+            attackFeedbackUntil = defenseFeedbackUntil = targetFlashUntil = nextFeedbackSoundAt = 0f;
+            lastHitTarget = null;
+            if (targetMarker != null) targetMarker.gameObject.SetActive(false);
+            if (attackFeedback != null) attackFeedback.transform.parent.gameObject.SetActive(false);
+            if (defenseFeedback != null) defenseFeedback.transform.parent.gameObject.SetActive(false);
+            if (feedbackAudio != null) feedbackAudio.Stop();
         }
 
         private void StartGame()
@@ -293,19 +434,12 @@ namespace FengChenInn
         {
             bars.gameObject.SetActive(true);
             CombatActor threat = IncomingThreat();
-            CombatActor player = duel.PlayerActor, enemy = threat != null ? threat : duel.ActiveEnemy, ally = duel.EliteActor;
+            CombatActor player = duel.PlayerActor, ally = duel.EliteActor;
             playerFill.fillAmount = player != null ? (float)player.Health / Mathf.Max(1, player.MaxHealth) : 1f;
             playerValue.text = player != null ? $"{player.Health} / {player.MaxHealth}" : "—";
             staminaFill.fillAmount = fighter.Stamina01;
             staminaValue.text = $"体力 {Mathf.CeilToInt(fighter.Stamina)} / {Mathf.CeilToInt(fighter.MaxStamina)}";
             staminaFill.color = fighter.Stamina01 < .2f ? Red : Amber;
-            rivalPanel.gameObject.SetActive(battle && enemy != null && !enemy.IsDefeated);
-            if (enemy != null)
-            {
-                rivalFill.fillAmount = (float)enemy.Health / Mathf.Max(1, enemy.MaxHealth);
-                rivalValue.text = $"{enemy.Health} / {enemy.MaxHealth}";
-                rivalName.text = enemy.DisplayName;
-            }
             bool showAlly = ally != null && (part == StoryPart.Departure || part == StoryPart.ReturnToHelp || part == StoryPart.JointFight);
             allyPanel.gameObject.SetActive(showAlly);
             if (showAlly)
@@ -642,6 +776,68 @@ namespace FengChenInn
             shortLine = Label(layer, "", 21, Paper, Bottom, new Vector2(0, 98), new Vector2(980, 72), TextAnchor.MiddleCenter);
             shortLine.gameObject.AddComponent<Shadow>().effectColor = Color.black;
             Label(layer, "F1 操作   ·   Esc 暂停", 15, Paper, BottomLeft, new Vector2(30, 22), new Vector2(300, 26));
+            BuildCombatFeedback(layer);
+        }
+
+        private void BuildCombatFeedback(RectTransform layer)
+        {
+            // Small brackets identify a person, never imply a screen-centre sword ray.
+            targetMarker = Place(layer, "当前攻击目标", Center, Center, Vector2.zero, new Vector2(30, 30));
+            foreach (float x in new[] { -1f, 1f })
+            foreach (float y in new[] { -1f, 1f })
+            {
+                AddTargetStroke(new Vector2(x * 11f, y * 15f), new Vector2(8, 2));
+                AddTargetStroke(new Vector2(x * 15f, y * 11f), new Vector2(2, 8));
+            }
+            var offense = Place(layer, "攻击结果", TopRight, TopRight, new Vector2(-42, -158), new Vector2(286, 34));
+            Paint(offense, Ink);
+            attackFeedback = Label(offense, "", 21, Paper, Center, Vector2.zero,
+                new Vector2(264, 32), TextAnchor.MiddleRight);
+            var defense = Place(layer, "防御结果", TopLeft, TopLeft, new Vector2(42, -316), new Vector2(286, 34));
+            Paint(defense, Ink);
+            defenseFeedback = Label(defense, "", 21, Paper, Center, Vector2.zero,
+                new Vector2(264, 32), TextAnchor.MiddleLeft);
+            feedbackAudio = gameObject.AddComponent<AudioSource>();
+            feedbackAudio.playOnAwake = false;
+            feedbackAudio.spatialBlend = 0f;
+            feedbackAudio.volume = .22f;
+            // Original, short procedural cues; no externally licensed sound files.
+            strikeSound = MakeCombatSound("Sword contact", 0);
+            blockSound = MakeCombatSound("Sword deflected", 1);
+            hurtSound = MakeCombatSound("Player struck", 2);
+            ClearCombatFeedback();
+        }
+
+        private void AddTargetStroke(Vector2 position, Vector2 size)
+        {
+            var stroke = Paint(Place(targetMarker, "目标线", Center, Center, position, size), Paper);
+            var outline = stroke.gameObject.AddComponent<UnityEngine.UI.Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, .85f);
+            outline.effectDistance = new Vector2(1, -1);
+            targetStrokes.Add(stroke);
+        }
+
+        private static AudioClip MakeCombatSound(string name, int kind)
+        {
+            const int sampleRate = 22050;
+            float duration = kind == 1 ? .15f : .10f;
+            var samples = new float[Mathf.CeilToInt(sampleRate * duration)];
+            var random = new System.Random(51 + kind);
+            float filtered = 0f;
+            for (int i = 0; i < samples.Length; i++)
+            {
+                float t = (float)i / sampleRate;
+                float noise = (float)random.NextDouble() * 2f - 1f;
+                filtered = Mathf.Lerp(filtered, noise, kind == 1 ? .8f : .22f);
+                float envelope = Mathf.Min(1f, t / .002f) * Mathf.Pow(1f - t / duration, 3f);
+                float tone = kind == 1
+                    ? .42f * Mathf.Sin(2f * Mathf.PI * 1470f * t) + .22f * Mathf.Sin(2f * Mathf.PI * 2210f * t)
+                    : .35f * Mathf.Sin(2f * Mathf.PI * (kind == 2 ? 95f : 190f) * t);
+                samples[i] = (tone + filtered * .6f) * envelope;
+            }
+            var clip = AudioClip.Create(name, samples.Length, 1, sampleRate, false);
+            clip.SetData(samples, 0);
+            return clip;
         }
 
         private (UnityEngine.UI.Image fill, UnityEngine.UI.Text value, UnityEngine.UI.Text name, RectTransform panel) Health(
@@ -692,6 +888,7 @@ namespace FengChenInn
             if (fighter.IsMotionAvailable(CombatMotion.Skill)) controls.Add("F   地面突进斩");
             controls.Add("E   交谈 / 推门    F1   查看操作");
             controls.Add("Esc   暂停    R   从头重试");
+            controls.Add("敌人身上的方框表示攻击目标；右侧提示命中或被格挡。");
             controls.Add("停止消耗体力的动作，等待恢复。留意对手起手，等收势再反击。");
             tutorialControls.text = string.Join("\n", controls);
         }

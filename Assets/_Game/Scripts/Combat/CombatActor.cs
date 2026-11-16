@@ -40,6 +40,8 @@ namespace FengChenInn
         public Vector3 BladeAxis = Vector3.forward;
         public float BladeStart = .12f, BladeEnd = 1.1f, BladeRadius = .065f;
         public LayerMask collisionMask = ~0;
+        [Tooltip("Only defeated grunts are hidden. Story elites are never removed.")]
+        [Min(0f)] public float defeatedGruntHideDelay = 4f;
         public bool Guarding { get; set; }
         public bool Invulnerable { get; set; }
         public bool ControlLocked { get; set; }
@@ -60,6 +62,41 @@ namespace FengChenInn
         public event Action<CombatActor> Blocked;
         public event Action<CombatAttack> AttackStarted;
         public event Action<CombatActor, int> HitLanded;
+        // Raised on the attacker, distinct from a successful damaging hit.
+        public event Action<CombatActor> AttackBlocked;
+
+        public float FirstHitTime
+        {
+            get
+            {
+                if (attack == null) return 0f;
+                float first = float.PositiveInfinity;
+                if (windows != null)
+                    foreach (var window in windows)
+                        if (window != null && window.end >= window.start) first = Mathf.Min(first, window.start);
+                return float.IsPositiveInfinity(first) ? attack.activeStart : first;
+            }
+        }
+        public float LastHitTime
+        {
+            get
+            {
+                if (attack == null) return 0f;
+                float last = 0f;
+                if (windows != null)
+                    foreach (var window in windows)
+                        if (window != null && window.end >= window.start) last = Mathf.Max(last, window.end);
+                return last;
+            }
+        }
+
+        // Only used during early windup. Root travel and the body must share a heading.
+        public void SetAttackFacing(Quaternion facing)
+        {
+            if (attack == null || attackClock >= FirstHitTime) return;
+            transform.rotation = attackFacing = facing;
+            hasPreviousBlade = false;
+        }
 
         CharacterController motor;
         CombatAttack attack;
@@ -71,6 +108,9 @@ namespace FengChenInn
         Quaternion attackFacing;
         bool hasPreviousBlade;
         ImpactSlide impact;
+        float defeatedFor;
+        Renderer[] hiddenDefeatRenderers;
+        bool[] defeatRendererStates;
 
         void Awake() { Health = maxHealth; RefreshBindings(); }
         void OnEnable() => actors.Add(this);
@@ -92,6 +132,8 @@ namespace FengChenInn
 
         public void ResetActor(int health = -1)
         {
+            RestoreDefeatVisuals();
+            defeatedFor = 0f;
             CancelAttack();
             Health = health < 0 ? maxHealth : Mathf.Clamp(health, 1, maxHealth);
             stunTime = 0f;
@@ -99,6 +141,30 @@ namespace FengChenInn
             Guarding = Invulnerable = ControlLocked = false;
             RefreshBindings();
             if (motor != null) motor.enabled = true;
+        }
+
+        void RestoreDefeatVisuals()
+        {
+            if (hiddenDefeatRenderers != null)
+                for (int i = 0; i < hiddenDefeatRenderers.Length; i++)
+                    if (hiddenDefeatRenderers[i] != null) hiddenDefeatRenderers[i].enabled = defeatRendererStates[i];
+            hiddenDefeatRenderers = null;
+            defeatRendererStates = null;
+        }
+
+        void UpdateDefeatVisuals(float dt)
+        {
+            if (role != CombatRole.Grunt || !IsDefeated || hiddenDefeatRenderers != null) return;
+            defeatedFor += dt;
+            if (defeatedFor < defeatedGruntHideDelay) return;
+            hiddenDefeatRenderers = GetComponentsInChildren<Renderer>(true);
+            defeatRendererStates = new bool[hiddenDefeatRenderers.Length];
+            for (int i = 0; i < hiddenDefeatRenderers.Length; i++)
+            {
+                defeatRendererStates[i] = hiddenDefeatRenderers[i].enabled;
+                hiddenDefeatRenderers[i].enabled = false;
+            }
+            if (motor != null) motor.enabled = false;
         }
 
         public void SetTeam(CombatTeam value)
@@ -154,6 +220,7 @@ namespace FengChenInn
             {
                 impact.Start(-toward, Mathf.Min(.04f, knockback));
                 Blocked?.Invoke(source);
+                source?.AttackBlocked?.Invoke(this);
                 return true;
             }
             int dealt = Mathf.Min(Health, amount);
@@ -185,6 +252,7 @@ namespace FengChenInn
         void LateUpdate()
         {
             float dt = Time.deltaTime;
+            if (dt > 0f) UpdateDefeatVisuals(dt);
             if (dt <= 0f || ControlLocked) return;
             stunTime = Mathf.Max(0f, stunTime - dt);
             if (impact.Active && motor != null && motor.enabled) motor.Move(impact.Advance(dt));
