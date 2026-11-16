@@ -12,7 +12,8 @@ namespace FengChenInn
         {
             if (fighter == null) return;
             duel = fighter.GetComponent<DuelEncounter>();
-            if (duel == null || gameObject.scene.name != "InnDuel") return;
+            string sceneName = gameObject.scene.name;
+            if (duel == null || (sceneName != "InnDuel" && sceneName != "InnDuel_Stage11" && sceneName != "InnDuel_Stage12_CollisionLighting")) return;
             foreach (Transform child in transform) child.gameObject.SetActive(false);
             gameObject.AddComponent<InnInterface>().Initialize(fighter, duel);
             enabled = false;
