@@ -34,7 +34,26 @@ namespace FengChenInn
         private int currentSlot = -1;
         private float fadeClock, fadeDuration;
         private bool bindingReported, guardReleasing;
+        private float impactPauseUntil;
+        public bool IsImpactPaused => Time.time < impactPauseUntil;
         public bool IsGuardReleasing => Ready && CurrentMotion == CombatMotion.Guard && guardReleasing && NormalizedTime < .999f;
+
+        public void PauseImpact(float duration)
+        {
+            impactPauseUntil = Mathf.Max(impactPauseUntil, Time.time + Mathf.Clamp(duration, 0f, .1f));
+            if (mixer.IsValid()) mixer.SetSpeed(0d);
+        }
+
+        public void ClearImpactPause()
+        {
+            impactPauseUntil = 0f;
+            if (mixer.IsValid()) mixer.SetSpeed(1d);
+        }
+
+        private void Update()
+        {
+            if (mixer.IsValid()) mixer.SetSpeed(IsImpactPaused ? 0d : 1d);
+        }
 
         private void Awake() => BuildGraph();
         private void OnEnable() { if (!graph.IsValid()) BuildGraph(); }
@@ -75,6 +94,24 @@ namespace FengChenInn
             return clip != null ? Mathf.Max(.001f, clip.length) : fallback;
         }
 
+        public bool TryGetMotionTime(CombatMotion motion, out float clipSeconds)
+        {
+            clipSeconds = 0f;
+            if (!Ready || CurrentMotion != motion || currentSlot < 0 || !clips[currentSlot].IsValid()) return false;
+            clipSeconds = Mathf.Clamp((float)clips[currentSlot].GetTime(), 0f, MotionLength(motion));
+            return true;
+        }
+
+        // Only this actor's graph is evaluated. Zero delta neither advances
+        // global game time nor another actor; caller restores the final pose.
+        public bool SampleMotionPose(CombatMotion motion, float clipSeconds)
+        {
+            if (!Ready || CurrentMotion != motion || currentSlot < 0 || !clips[currentSlot].IsValid()) return false;
+            clips[currentSlot].SetTime(Mathf.Clamp(clipSeconds, 0f, MotionLength(motion)));
+            graph.Evaluate(0f);
+            return true;
+        }
+
         public void Play(CombatMotion motion, float fade = .12f, float speed = 1f)
             => PlayInternal(motion, fade, speed, false);
 
@@ -91,6 +128,17 @@ namespace FengChenInn
             guardReleasing = true;
             clips[currentSlot].SetSpeed(Mathf.Max(.01f, speed));
             return true;
+        }
+
+        public void SettleForDialogue(bool battle = false)
+        {
+            if (!Ready) return;
+            CombatMotion rest = battle ? CombatMotion.Idle : CombatMotion.ExplorationIdle;
+            if (!HasMotion(rest)) rest = CombatMotion.Idle;
+            if (!HasMotion(rest)) return;
+            ClearImpactPause();
+            Restart(rest, 0f);
+            graph.Evaluate(0f);
         }
 
         private void PlayInternal(CombatMotion motion, float fade, float speed, bool restart)
@@ -172,6 +220,7 @@ namespace FengChenInn
         private void LateUpdate()
         {
             if (!Ready || currentSlot < 0) return;
+            if (IsImpactPaused) return;
             if (fadeDuration > 0f && fadeClock < fadeDuration)
             {
                 fadeClock = Mathf.Min(fadeDuration, fadeClock + Time.deltaTime);
@@ -206,6 +255,7 @@ namespace FengChenInn
 
         private void ReleaseGraph()
         {
+            impactPauseUntil = 0f;
             if (graph.IsValid()) graph.Destroy();
             currentSlot = -1;
             guardReleasing = false;

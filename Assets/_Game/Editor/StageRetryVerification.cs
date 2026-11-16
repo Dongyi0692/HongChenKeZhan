@@ -15,9 +15,11 @@ public static class StageRetryVerification
 {
     [Serializable] public sealed class Report
     {
-        public string scope = "Existing InnDuel, live frames, real damage/progression and result-button callbacks. AI Update is temporarily suspended to isolate checkpoint behavior; this is not an animation or performance test. No scenes are created or saved. Returns to title on completion.";
+        public string scope = "Existing InnDuel, live frames, real elite doorway entrance and dialogue camera, damage/progression and result-button callbacks. AI Update is temporarily suspended to isolate checkpoint behavior; entrance locomotion still runs normally. This is not an attack-animation or performance test. No scenes are created or saved. Returns to title on completion.";
         public bool active, completed, passed, framesAdvanced, gameTimeAdvanced;
-        public string phase, outputPath, defeatScreenshot;
+        public string phase, outputPath, defeatScreenshot, entranceScreenshot;
+        public bool entranceObservedOutside, entranceCrossedDoor, entranceCompleted, dialogueClearanceSatisfied;
+        public float entranceDistanceTravelled;
         public int checks, frameStart, frameEnd, runtimeErrors, battlesVerified, retriesVerified;
         public float gameTimeStart, gameTimeEnd, elapsedSeconds;
         public List<string> successes = new(), failures = new();
@@ -32,7 +34,9 @@ public static class StageRetryVerification
     static readonly Dictionary<EnemyCombatAI, bool> brainStates = new();
     static readonly Dictionary<int, Vector3> checkpointPositions = new();
     static readonly List<CombatActor> opponents = new();
-    static Vector3 playerStart;
+    static Vector3 playerStart, entrancePreviousPosition;
+    static bool entranceObserved;
+    static int entranceMovingFrames;
     static int stageIndex, attempt, phaseFrame, sentryId, eliteId, allyHealth;
     static double startedAt, phaseAt;
     static float fightTimeAtStart;
@@ -64,6 +68,8 @@ public static class StageRetryVerification
             sentryId = duel.TutorialActor.GetInstanceID();
             eliteId = duel.EliteActor.GetInstanceID();
             stageIndex = attempt = 0;
+            entranceObserved = false;
+            entranceMovingFrames = 0;
             report.active = true;
             Application.logMessageReceived += OnLog;
             EditorApplication.update += Tick;
@@ -88,12 +94,13 @@ public static class StageRetryVerification
             PlacePlayerNear(duel.TutorialActor);
             Call("BeginTutorialFight");
         }
-        else if (stageIndex == 1)
-        {
-            PlacePlayerNear(duel.EliteActor);
-            Call("BeginEliteFight");
-        }
-        else Call("BeginRescue");
+        else if (stageIndex == 2) Call("BeginRescue");
+        else throw new InvalidOperationException("Elite battle must begin through the actual entrance and dialogue.");
+        RecordBattleStart();
+    }
+
+    static void RecordBattleStart()
+    {
         Require(duel.Stage == ExpectedStage && duel.IsCombatActive, "Could not start expected battle " + ExpectedStage);
         if (input != null) input.enabled = false;
         SuspendBrains();
@@ -123,7 +130,7 @@ public static class StageRetryVerification
         {
             Observe();
             if (!EditorApplication.isPlaying) { Fail("Play Mode ended before checkpoint checks finished."); return; }
-            if (report.elapsedSeconds > 45f) { Fail("Checkpoint verification exceeded 45 seconds in " + report.phase); return; }
+            if (report.elapsedSeconds > 75f) { Fail("Checkpoint verification exceeded 75 seconds in " + report.phase); return; }
             if (input != null) input.enabled = false;
             SuspendBrains();
             if (Time.frameCount <= phaseFrame) return;
@@ -178,6 +185,9 @@ public static class StageRetryVerification
                         var expected = stageIndex == 0 ? DuelEncounter.EncounterStage.EliteReady
                             : stageIndex == 1 ? DuelEncounter.EncounterStage.EliteVictory : DuelEncounter.EncounterStage.Complete;
                         Check(duel.Stage == expected, ExpectedStage + " can still be won after repeated retry");
+                        if (stageIndex == 0)
+                            Check(!duel.EliteActor.gameObject.activeSelf && !duel.EliteEntranceInProgress && !duel.EliteEntranceComplete,
+                                "Tutorial defeat does not instantly reveal or finish the elite entrance");
                         report.battlesVerified++;
                         SetPhase("Advance");
                     }
@@ -187,7 +197,7 @@ public static class StageRetryVerification
                     if (stageIndex == 0)
                     {
                         Check(duel.TutorialActor.IsDefeated, "Tutorial victory persists before the elite duel");
-                        stageIndex++; attempt = 0; StartBattle();
+                        SetPhase("AwaitEliteEntrance");
                     }
                     else if (stageIndex == 1)
                     {
@@ -216,12 +226,82 @@ public static class StageRetryVerification
                         SetPhase("Finalize");
                     }
                     break;
+                case "AwaitEliteEntrance":
+                    ObserveEliteEntrance();
+                    if (!duel.EliteEntranceComplete || View != "Dialogue")
+                    {
+                        if (elapsed > 15d) Fail("Elite did not complete its actual entrance and open dialogue. UI " + View
+                            + ", entrance active " + duel.EliteEntranceInProgress + ", stopped " + duel.EliteEntranceStoppedAtDoor);
+                        return;
+                    }
+                    Check(report.entranceObservedOutside, "Elite first becomes visible outside the actual doorway");
+                    Check(report.entranceDistanceTravelled > 1.5f && entranceMovingFrames >= 3,
+                        "Elite advances through live locomotion frames instead of appearing at the hall destination");
+                    Check(report.entranceCrossedDoor && !duel.EliteEntranceStoppedAtDoor,
+                        "Elite passes through the doorway without blocked-route fallback");
+                    Check(Vector3.ProjectOnPlane(duel.EliteActor.transform.position - duel.eliteArrivalPosition, Vector3.up).magnitude < .3f,
+                        "Elite reaches the hall dialogue stance");
+                    Check(!duel.IsCombatActive && !duel.CanRetryCurrentBattle,
+                        "Entrance and pre-fight dialogue do not capture a premature combat checkpoint");
+                    report.entranceCompleted = true;
+                    SetPhase("EliteDialogueCamera");
+                    break;
+                case "EliteDialogueCamera":
+                    if (Time.frameCount < phaseFrame + 3 || elapsed < .65d) return;
+                    Check(View == "Dialogue" && !duel.EliteEntranceInProgress, "Dialogue freezes gameplay only after the elite has settled");
+                    Check(FacingOther(player.transform, duel.EliteActor.transform) && FacingOther(duel.EliteActor.transform, player.transform),
+                        "Both living dialogue participants face each other horizontally");
+                    var orbit = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
+                    Check(orbit != null && orbit.enabled && orbit.IsFramingActors,
+                        "Dialogue uses the enabled shared camera framing mode");
+                    report.dialogueClearanceSatisfied = orbit.ClearanceSatisfied;
+                    Check(report.dialogueClearanceSatisfied, "Dialogue camera has obstruction clearance after its transition");
+                    report.entranceScreenshot = Path.Combine(LogFolder(), "EliteEntranceDialogue.png");
+                    ScreenCapture.CaptureScreenshot(report.entranceScreenshot);
+                    SetPhase("EliteDialogueCaptured");
+                    break;
+                case "EliteDialogueCaptured":
+                    if (Time.frameCount < phaseFrame + 2) return;
+                    stageIndex = 1; attempt = 0;
+                    FinishDialogue();
+                    RecordBattleStart();
+                    Check(duel.EliteEntranceComplete, "Second-stage checkpoint is captured after the actual entrance");
+                    break;
                 case "Finalize":
                     if (Time.frameCount > phaseFrame + 2) Finish();
                     break;
             }
         }
         catch (Exception error) { Fail(error.GetBaseException().ToString()); }
+    }
+
+    static void ObserveEliteEntrance()
+    {
+        if (!duel.EliteActor.gameObject.activeInHierarchy) return;
+        var door = Object.FindFirstObjectByType<InnEntranceDoors>();
+        Require(door != null, "Actual doorway is required to verify the entrance route.");
+        Vector3 position = duel.EliteActor.transform.position;
+        float inward = duel.eliteArrivalPosition.z >= door.transform.position.z ? 1f : -1f;
+        float doorDepth = (position.z - door.transform.position.z) * inward;
+        if (!entranceObserved)
+        {
+            entranceObserved = true;
+            report.entranceObservedOutside = doorDepth < -.5f;
+            entrancePreviousPosition = position;
+            Check(door.OpenRequested && duel.EliteEntranceInProgress, "Arrival opens the real door before elite movement");
+        }
+        float moved = Vector3.ProjectOnPlane(position - entrancePreviousPosition, Vector3.up).magnitude;
+        if (moved > .001f) entranceMovingFrames++;
+        report.entranceDistanceTravelled += moved;
+        entrancePreviousPosition = position;
+        if (doorDepth > .25f) report.entranceCrossedDoor = true;
+    }
+
+    static bool FacingOther(Transform actor, Transform other)
+    {
+        Vector3 toward = Vector3.ProjectOnPlane(other.position - actor.position, Vector3.up);
+        Vector3 forward = Vector3.ProjectOnPlane(actor.forward, Vector3.up);
+        return toward.sqrMagnitude > .01f && Vector3.Angle(forward, toward) < 5f;
     }
 
     static void DirtyAndDefeat()

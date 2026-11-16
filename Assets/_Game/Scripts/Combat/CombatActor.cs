@@ -51,6 +51,8 @@ namespace FengChenInn
         public int Health { get; private set; }
         public bool IsDefeated => Health <= 0;
         public bool IsStunned => stunTime > 0f;
+        public float StunRemaining => stunTime;
+        public bool IsHitPaused => Animation != null && Animation.IsImpactPaused;
         public bool IsAttacking => attack != null;
         public float AttackElapsed => attackClock;
         public float AttackDuration => attack != null ? attack.duration : 0f;
@@ -64,6 +66,8 @@ namespace FengChenInn
         public event Action<CombatActor, int> HitLanded;
         // Raised on the attacker, distinct from a successful damaging hit.
         public event Action<CombatActor> AttackBlocked;
+        // Optional live diagnostics; no allocation or geometry queries without a subscriber.
+        public event Action<CombatMotion, float, float, Vector3, Vector3> AttackPoseSampled;
 
         public float FirstHitTime
         {
@@ -90,12 +94,49 @@ namespace FengChenInn
             }
         }
 
-        // Only used during early windup. Root travel and the body must share a heading.
-        public void SetAttackFacing(Quaternion facing)
+        public bool IsBetweenStrikes(float recovery = .10f, float nextStrikeMargin = .08f)
         {
-            if (attack == null || attackClock >= FirstHitTime) return;
+            if (attack == null || windows == null || windows.Length < 2) return false;
+            float previousEnd = float.NegativeInfinity, nextStart = float.PositiveInfinity;
+            foreach (var window in windows)
+            {
+                if (window == null || window.end < window.start) continue;
+                if (attackClock >= window.start && attackClock <= window.end) return false;
+                if (window.end < attackClock) previousEnd = Mathf.Max(previousEnd, window.end);
+                if (window.start > attackClock) nextStart = Mathf.Min(nextStart, window.start);
+            }
+            return !float.IsInfinity(previousEnd) && !float.IsInfinity(nextStart)
+                && attackClock >= previousEnd + recovery && attackClock < nextStart - nextStrikeMargin;
+        }
+
+        public bool IsComboWindup(float anticipation = .14f)
+        {
+            if (attack == null || windows == null || windows.Length < 2) return false;
+            float previousEnd = float.NegativeInfinity, nextStart = float.PositiveInfinity;
+            foreach (var window in windows)
+            {
+                if (window == null || window.end < window.start) continue;
+                if (attackClock >= window.start && attackClock <= window.end) return false;
+                if (window.end < attackClock) previousEnd = Mathf.Max(previousEnd, window.end);
+                if (window.start > attackClock) nextStart = Mathf.Min(nextStart, window.start);
+            }
+            return !float.IsInfinity(previousEnd) && !float.IsInfinity(nextStart)
+                && attackClock >= previousEnd + .08f && attackClock >= nextStart - anticipation;
+        }
+
+        // Root travel and body share a heading; never redirect inside a hit window.
+        public void SetAttackFacing(Quaternion facing, bool allowComboWindup = false, float anticipation = .14f)
+        {
+            if (attack == null || attackClock >= FirstHitTime && !(allowComboWindup && IsComboWindup(anticipation))) return;
+            // Keep animation-path history through windup. Rotate that history
+            // with the body so the turn itself cannot manufacture a sword hit.
+            if (hasPreviousBlade)
+            {
+                Quaternion change = facing * Quaternion.Inverse(transform.rotation);
+                previousBase = transform.position + change * (previousBase - transform.position);
+                previousTip = transform.position + change * (previousTip - transform.position);
+            }
             transform.rotation = attackFacing = facing;
-            hasPreviousBlade = false;
         }
 
         CharacterController motor;
@@ -114,7 +155,12 @@ namespace FengChenInn
 
         void Awake() { Health = maxHealth; RefreshBindings(); }
         void OnEnable() => actors.Add(this);
-        void OnDisable() { actors.Remove(this); CancelAttack(); }
+        void OnDisable()
+        {
+            actors.Remove(this);
+            CancelAttack();
+            if (Animation != null) Animation.ClearImpactPause();
+        }
 
         public void RefreshBindings()
         {
@@ -132,6 +178,7 @@ namespace FengChenInn
 
         public void ResetActor(int health = -1)
         {
+            if (Animation != null) Animation.ClearImpactPause();
             RestoreDefeatVisuals();
             defeatedFor = 0f;
             CancelAttack();
@@ -180,7 +227,7 @@ namespace FengChenInn
 
         public bool TryAttack(CombatAttack definition)
         {
-            if (definition == null || IsDefeated || IsStunned || IsAttacking || ControlLocked ||
+            if (definition == null || IsDefeated || IsStunned || IsAttacking || IsHitPaused || ControlLocked ||
                 (role == CombatRole.Grunt && definition.motion == CombatMotion.Skill)) return false;
             RefreshBindings();
             // A missing clip or weapon is a missing action, never a procedural replacement.
@@ -221,6 +268,7 @@ namespace FengChenInn
                 impact.Start(-toward, Mathf.Min(.04f, knockback));
                 Blocked?.Invoke(source);
                 source?.AttackBlocked?.Invoke(this);
+                PauseContact(source, .025f);
                 return true;
             }
             int dealt = Mathf.Min(Health, amount);
@@ -239,6 +287,8 @@ namespace FengChenInn
             }
             Damaged?.Invoke(source, dealt);
             source?.HitLanded?.Invoke(this, dealt);
+            if (!IsDefeated) PauseContact(source, source != null && source.CurrentAttack != null
+                && source.CurrentAttack.motion == CombatMotion.Heavy ? .055f : .035f);
             if (IsDefeated)
             {
                 // Only a character that falls to the floor releases its standing capsule.
@@ -249,39 +299,75 @@ namespace FengChenInn
             return true;
         }
 
+        void PauseContact(CombatActor source, float duration)
+        {
+            // Presentation pause is actor-local: UI, camera, other opponents and
+            // global game time keep running. Actor and graph use the same timer.
+            if (Animation != null) Animation.PauseImpact(duration);
+            if (source != null && source.Animation != null) source.Animation.PauseImpact(duration);
+        }
+
         void LateUpdate()
         {
             float dt = Time.deltaTime;
             if (dt > 0f) UpdateDefeatVisuals(dt);
             if (dt <= 0f || ControlLocked) return;
+            if (IsHitPaused) return;
             stunTime = Mathf.Max(0f, stunTime - dt);
             if (impact.Active && motor != null && motor.enabled) motor.Move(impact.Advance(dt));
             if (attack == null) return;
             float before = attackClock;
-            attackClock += dt;
-            if (motor != null && motor.enabled && Animation != null && Animation.motionSet != null &&
-                Animation.motionSet.TryGetRootDelta(attack.motion, before * Mathf.Max(.05f, attack.speed),
-                    Mathf.Min(attackClock, attack.duration) * Mathf.Max(.05f, attack.speed), out Vector3 travel))
-                motor.Move(attackFacing * new Vector3(travel.x, 0f, travel.z));
-            BladeSegment(out Vector3 from, out Vector3 to);
-            int samples = hasPreviousBlade ? Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(
-                Vector3.Distance(previousBase, from), Vector3.Distance(previousTip, to)) / Mathf.Max(.025f, BladeRadius)), 1, 24) : 1;
             CombatAttack current = attack;
-            for (int windowIndex = 0; attack == current && windowIndex < windows.Length; windowIndex++)
+            float speed = Mathf.Max(.05f, current.speed);
+            // The graph may begin evaluating one frame after an input request.
+            // Independent += deltaTime used to lead the visible sword by that
+            // entire first frame (71 ms in the live trace). Share its real clock.
+            if (Animation == null || !Animation.TryGetMotionTime(current.motion, out float clipTime)) return;
+            float end = Mathf.Min(current.duration, Mathf.Max(before, clipTime / speed));
+            if (end <= before) return;
+            bool activeInterval = false;
+            foreach (var window in windows)
+                if (window != null && window.end >= window.start && end >= window.start && before <= window.end)
+                { activeInterval = true; break; }
+            // At low fps a rotating sword follows an arc, not the chord between
+            // two rendered endpoints. Sample actual bones only near damage
+            // windows, bounded at 24 poses for a hitch and ~60 poses/second.
+            int poses = activeInterval ? Mathf.Clamp(Mathf.CeilToInt((end - before) * 60f), 1, 24) : 1;
+            for (int pose = 1; pose <= poses && attack == current; pose++)
             {
-                CombatHitWindow window = windows[windowIndex];
-                if (window == null || attackClock < window.start || before > window.end || window.end < window.start) continue;
-                for (int sample = 0; sample <= samples && attack == current; sample++)
+                float previousClock = attackClock;
+                attackClock = Mathf.Lerp(before, end, (float)pose / poses);
+                if (motor != null && motor.enabled && Animation.motionSet != null &&
+                    Animation.motionSet.TryGetRootDelta(current.motion, previousClock * speed, attackClock * speed, out Vector3 travel))
+                    motor.Move(attackFacing * new Vector3(travel.x, 0f, travel.z));
+                if (activeInterval) Animation.SampleMotionPose(current.motion, attackClock * speed);
+                BladeSegment(out Vector3 from, out Vector3 to);
+                AttackPoseSampled?.Invoke(current.motion, previousClock, attackClock, from, to);
+                int samples = hasPreviousBlade ? Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(
+                    Vector3.Distance(previousBase, from), Vector3.Distance(previousTip, to)) / Mathf.Max(.025f, BladeRadius)), 1, 24) : 1;
+                for (int windowIndex = 0; attack == current && windowIndex < windows.Length; windowIndex++)
                 {
-                    float t = samples == 0 ? 1f : (float)sample / samples;
-                    Vector3 start = hasPreviousBlade ? Vector3.Lerp(previousBase, from, t) : from;
-                    Vector3 end = hasPreviousBlade ? Vector3.Lerp(previousTip, to, t) : to;
-                    SweepSegment(start, end, current, window, hitTargets[windowIndex]);
+                    CombatHitWindow window = windows[windowIndex];
+                    if (window == null || attackClock < window.start || previousClock > window.end || window.end < window.start) continue;
+                    float interval = Mathf.Max(.00001f, attackClock - previousClock);
+                    float firstSample = Mathf.Clamp01((window.start - previousClock) / interval);
+                    float lastSample = Mathf.Clamp01((window.end - previousClock) / interval);
+                    for (int sample = 0; sample <= samples && attack == current; sample++)
+                    {
+                        float t = Mathf.Lerp(firstSample, lastSample, (float)sample / samples);
+                        Vector3 start = hasPreviousBlade ? Vector3.Lerp(previousBase, from, t) : from;
+                        Vector3 tip = hasPreviousBlade ? Vector3.Lerp(previousTip, to, t) : to;
+                        SweepSegment(start, tip, current, window, hitTargets[windowIndex]);
+                    }
                 }
+                if (attack != current) return; // A story/hit event owns its new pose.
+                previousBase = from;
+                previousTip = to;
+                hasPreviousBlade = true;
+                // Keep the exact contact pose/root time during local hitstop;
+                // resume from it instead of jumping to the pre-evaluated end.
+                if (IsHitPaused) return;
             }
-            previousBase = from;
-            previousTip = to;
-            hasPreviousBlade = true;
             if (attack == current && attackClock >= current.duration) CancelAttack();
         }
 

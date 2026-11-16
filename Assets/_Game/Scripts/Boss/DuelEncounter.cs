@@ -26,6 +26,12 @@ namespace FengChenInn
         public Vector3 eliteGuardPosition = new(0f, .05f, -3.0f);
         public Vector3 rescueArrivalPosition = new(0f, .05f, -5.8f);
         public CombatAttack[] eliteAttacks, gruntAttacks;
+        [Header("Elite entrance")]
+        [Min(.1f)] public float eliteEntranceSpeed = 1.7f;
+        public bool EliteEntranceInProgress { get; private set; }
+        public bool EliteEntranceComplete { get; private set; }
+        public bool EliteEntranceStoppedAtDoor { get; private set; }
+        public bool EliteEntranceReadyForDialogue => EliteEntranceComplete && Time.time >= eliteEntranceReadyAt;
         public EncounterStage Stage { get; private set; } = EncounterStage.Arrival;
         public EncounterStage RetryStage { get; private set; } = EncounterStage.Arrival;
         public bool CanRetryCurrentBattle => checkpoint.Count > 1 && IsBattleStage(RetryStage)
@@ -110,14 +116,23 @@ namespace FengChenInn
         bool initialized, combatRunning, eliteRestored;
         float feedbackUntil;
         float entranceZ = float.NaN;
+        InnEntranceDoors entranceDoors;
+        Vector3 entranceWaypoint;
+        float entranceMoveAt, entranceStartedAt, entranceStalledFor, entranceVerticalSpeed, eliteEntranceReadyAt;
+        bool crossedEntrance;
         Transform spawnStaging;
         void Start() => Initialize();
-        void Update() { if (Time.time >= feedbackUntil) Feedback = ""; }
+        void Update()
+        {
+            if (Time.time >= feedbackUntil) Feedback = "";
+            if (EliteEntranceInProgress && Time.deltaTime > 0f) UpdateEliteEntrance(Time.deltaTime);
+        }
         void Initialize()
         {
             if (initialized) return;
             initialized = true;
             var entrance = FindFirstObjectByType<InnEntranceDoors>();
+            entranceDoors = entrance;
             if (entrance != null) entranceZ = entrance.transform.position.z;
             PlayerActor = GetComponent<CombatActor>();
             if (PlayerActor == null) PlayerActor = gameObject.AddComponent<CombatActor>();
@@ -135,6 +150,8 @@ namespace FengChenInn
             StopCombat();
             checkpoint.Clear();
             RetryStage = EncounterStage.Arrival;
+            EliteEntranceInProgress = EliteEntranceComplete = EliteEntranceStoppedAtDoor = false;
+            eliteEntranceReadyAt = 0f;
             foreach (var actor in spawned)
             {
                 if (actor == null) continue;
@@ -165,11 +182,103 @@ namespace FengChenInn
         public bool BeginEliteDuel()
         {
             Initialize();
-            if (Stage != EncounterStage.EliteReady || EliteActor == null || PlayerActor.IsDefeated) return false;
+            if (Stage != EncounterStage.EliteReady || !EliteEntranceReadyForDialogue || EliteActor == null || PlayerActor.IsDefeated) return false;
             if (!CheckBindings()) return false;
             if (!EliteActor.gameObject.activeSelf && !TryRevealActor(EliteActor, eliteArrivalPosition)) return false;
             StartCombat(EncounterStage.EliteDuel, EliteActor);
             return true;
+        }
+
+        public bool BeginEliteEntrance()
+        {
+            if (Stage != EncounterStage.EliteReady || EliteActor == null) return false;
+            if (EliteEntranceInProgress || EliteEntranceComplete) return true;
+            if (!CheckBindings()) return false;
+            Vector3 door = entranceDoors != null ? entranceDoors.transform.position
+                : new Vector3(eliteArrivalPosition.x, eliteArrivalPosition.y, float.IsNaN(entranceZ) ? -4.96f : entranceZ);
+            Vector3 inward = eliteArrivalPosition.z >= door.z ? Vector3.forward : Vector3.back;
+            Vector3 start = door - inward * 1.7f;
+            start.y = eliteArrivalPosition.y;
+            if (!ActorPlacement.TryPlace(EliteActor.GetComponent<CharacterController>(), start,
+                Quaternion.LookRotation(inward), entranceZ))
+            {
+                Show("门外站位被挡住，请留出进门通道");
+                return false;
+            }
+            EliteActor.gameObject.SetActive(true);
+            EliteActor.ControlLocked = true;
+            EliteActor.GetComponent<EnemyCombatAI>()?.SetCombatEnabled(false);
+            entranceWaypoint = door + inward * .85f;
+            entranceWaypoint.y = eliteArrivalPosition.y;
+            crossedEntrance = false;
+            entranceStalledFor = entranceVerticalSpeed = 0f;
+            entranceStartedAt = Time.time;
+            float openWait = 0f;
+            if (entranceDoors != null)
+            {
+                entranceDoors.OpenRequested = true;
+                openWait = Mathf.Clamp(entranceDoors.openAngle / Mathf.Max(10f, entranceDoors.rotationSpeed) + .15f, .2f, 3f);
+            }
+            entranceMoveAt = Time.time + openWait;
+            EliteEntranceInProgress = true;
+            EliteEntranceStoppedAtDoor = false;
+            return true;
+        }
+
+        void UpdateEliteEntrance(float dt)
+        {
+            if (Stage != EncounterStage.EliteReady || EliteActor == null)
+            { EliteEntranceInProgress = false; return; }
+            if (Time.time < entranceMoveAt)
+            {
+                SetEntranceLocomotion(0f);
+                return;
+            }
+            var motor = EliteActor.GetComponent<CharacterController>();
+            if (motor == null || !motor.enabled) { CompleteEliteEntrance(true); return; }
+            Vector3 destination = crossedEntrance ? eliteArrivalPosition : entranceWaypoint;
+            Vector3 delta = Vector3.ProjectOnPlane(destination - EliteActor.transform.position, Vector3.up);
+            if (delta.magnitude <= .18f)
+            {
+                if (!crossedEntrance) { crossedEntrance = true; return; }
+                CompleteEliteEntrance(false);
+                return;
+            }
+            Quaternion facing = Quaternion.LookRotation(delta);
+            EliteActor.transform.rotation = Quaternion.RotateTowards(EliteActor.transform.rotation, facing, 360f * dt);
+            Vector3 before = EliteActor.transform.position;
+            if (motor.isGrounded && entranceVerticalSpeed < 0f) entranceVerticalSpeed = -2f;
+            entranceVerticalSpeed = Mathf.Max(-12f, entranceVerticalSpeed - 22f * dt);
+            motor.Move(delta.normalized * (Mathf.Min(eliteEntranceSpeed, delta.magnitude / dt) * dt)
+                + Vector3.up * (entranceVerticalSpeed * dt));
+            float moved = Vector3.ProjectOnPlane(EliteActor.transform.position - before, Vector3.up).magnitude;
+            entranceStalledFor = moved < .1f * dt ? entranceStalledFor + dt : 0f;
+            SetEntranceLocomotion(moved / dt);
+            // Stop at the actual safe position if the player or new scenery blocks
+            // the route. Never teleport through the obstacle to finish the scene.
+            if (entranceStalledFor > 1.5f || Time.time - entranceStartedAt > 9f)
+                CompleteEliteEntrance(true);
+        }
+
+        void SetEntranceLocomotion(float speed)
+        {
+            if (EliteActor.Animation != null && EliteActor.Animation.Ready)
+                EliteActor.Animation.SetLocomotion(speed, false);
+        }
+
+        void CompleteEliteEntrance(bool stoppedAtDoor)
+        {
+            EliteEntranceInProgress = false;
+            EliteEntranceComplete = true;
+            EliteEntranceStoppedAtDoor = stoppedAtDoor;
+            SetEntranceLocomotion(0f);
+            // Let the real walk-to-idle blend finish before dialogue pauses game
+            // time; otherwise the last walking pose freezes with a raised foot.
+            float idleFade = EliteActor.Animation != null && EliteActor.Animation.motionSet != null
+                ? EliteActor.Animation.motionSet.locomotionFade : 0f;
+            eliteEntranceReadyAt = Time.time + Mathf.Max(.25f, idleFade + .05f);
+            Vector3 toward = Vector3.ProjectOnPlane(PlayerActor.transform.position - EliteActor.transform.position, Vector3.up);
+            if (toward.sqrMagnitude > .001f) EliteActor.transform.rotation = Quaternion.LookRotation(toward);
         }
         public bool MakeEliteAlly()
         {
@@ -503,7 +612,6 @@ namespace FengChenInn
             if (Stage == EncounterStage.Tutorial && actor == TutorialActor)
             {
                 StopCombat();
-                TryRevealActor(EliteActor, eliteArrivalPosition);
                 SetStage(EncounterStage.EliteReady);
             }
             else if (Stage == EncounterStage.EliteDuel && actor == EliteActor)

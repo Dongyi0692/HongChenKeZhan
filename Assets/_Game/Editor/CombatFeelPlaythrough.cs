@@ -18,10 +18,22 @@ public static class CombatFeelPlaythrough
         public string phase, scene, outputPath;
         public int frameStart, frameEnd, lightHitCount, heavyHitCount, runtimeErrors;
         public int lightRequests, heavyRequests, dodgeRequests;
+        public int gapHeavyRequests, gapDodgeRequests, guardGapHitCount, dodgeGapHitCount;
         public float gameTimeStart, gameTimeEnd, elapsedSeconds, initialAimAngle, turnDegrees;
         public bool lightStarted, heavyStarted, guardFromRecovery, dodgeFromRecovery;
+        public bool guardGapCancelled, dodgeGapCancelled, guardGapNoLateDamage, dodgeGapNoLateDamage;
+        public float guardGapCancelAt, dodgeGapCancelAt;
         public float lightRecoveryAt, lightFullDuration, heavyRecoveryAt, heavyFullDuration;
         public List<string> failures = new();
+        public List<SweepDiagnostic> sweeps = new();
+    }
+    [Serializable] public sealed class SweepDiagnostic
+    {
+        public string phase, motion, obstruction;
+        public int frame, window, targetHealth;
+        public float before, clock, clipTime, targetDistance, bladeClearance, obstructionDistance;
+        public Vector3 playerPosition, targetPosition, bladeBase, bladeTip;
+        public bool lineOfSight, overlapsTarget, targetLocked, targetInvulnerable, previousBladeValid;
     }
     [Serializable] public sealed class ActorState
     {
@@ -49,6 +61,8 @@ public static class CombatFeelPlaythrough
     static int phaseFrame;
     static Quaternion lightStartFacing;
     static float dodgeRequestedGameTime;
+    static float gapAttackDuration, gapWatchUntil;
+    static int gapHealthAfterCancel, gapHitsAfterCancel;
 
     [Unity.Pipeline.Commands.CliCommand("inncombat", "begin_playtest", "Drive real InnDuel combat over live frames without saving the scene")]
     public static string Begin()
@@ -86,6 +100,8 @@ public static class CombatFeelPlaythrough
             player.CancelAttack();
             player.HitLanded -= OnHit;
             player.HitLanded += OnHit;
+            player.AttackPoseSampled -= OnSweep;
+            player.AttackPoseSampled += OnSweep;
             fighter.ActionPerformed -= OnActionPerformed;
             fighter.ActionPerformed += OnActionPerformed;
             Application.logMessageReceived += OnLog;
@@ -140,7 +156,7 @@ public static class CombatFeelPlaythrough
         {
             ObserveTime();
             if (!EditorApplication.isPlaying) { Fail("Play Mode ended before verification completed."); return; }
-            if (report.elapsedSeconds > 30f) { Fail("30-second live-frame timeout; inspect timeScale/UI pause and player grounding."); return; }
+            if (report.elapsedSeconds > 45f) { Fail("45-second live-frame timeout; inspect timeScale/UI pause and player grounding."); return; }
             if (EditorApplication.isPaused || Time.timeScale <= 0f)
             {
                 if (EditorApplication.timeSinceStartup - phaseAt > 3d) Fail("Editor/game is paused; live playback could not advance.");
@@ -200,11 +216,95 @@ public static class CombatFeelPlaythrough
                     break;
                 case "Dodge":
                     if (fighter.State != PrototypeFighter.ActionState.Ready || phaseTime < .5d) return;
-                    Finish();
+                    PrepareGapTest(true);
+                    break;
+                case "SettleGuardGap":
+                case "SettleDodgeGap":
+                    if (!fighter.IsGrounded || phaseTime < .3d) return;
+                    bool guardGap = report.phase == "SettleGuardGap";
+                    SetPhase(guardGap ? "AwaitGuardGapStart" : "AwaitDodgeGapStart");
+                    report.gapHeavyRequests++;
+                    fighter.Attack(true);
+                    break;
+                case "AwaitGuardGapStart":
+                case "AwaitDodgeGapStart":
+                    if (phaseTime > 1d) Fail("Single gap-test heavy request did not start.");
+                    break;
+                case "GuardGapHeavy":
+                case "DodgeGapHeavy":
+                    if (!player.IsAttacking) { Fail("Gap-test heavy ended before its defensive exit."); return; }
+                    if (player.CurrentAttack.hitWindows == null || player.CurrentAttack.hitWindows.Length < 2)
+                    { Fail("Gap-test requires the real multi-strike heavy clip."); return; }
+                    if (player.AttackElapsed >= player.CurrentAttack.hitWindows[1].start)
+                    { Fail("Missed the first inter-strike defensive exit window."); return; }
+                    if (!fighter.CanDefendCancelAttack || player.IsHitPaused) return;
+                    gapAttackDuration = player.AttackDuration;
+                    if (report.phase == "GuardGapHeavy")
+                    {
+                        report.guardGapCancelAt = player.AttackElapsed;
+                        fighter.GuardRequested = true;
+                        SetPhase("AwaitGuardGapCancel");
+                    }
+                    else
+                    {
+                        report.dodgeGapCancelAt = player.AttackElapsed;
+                        SetPhase("AwaitDodgeGapCancel");
+                        report.gapDodgeRequests++;
+                        fighter.Dodge();
+                    }
+                    break;
+                case "AwaitGuardGapCancel":
+                    if (fighter.IsGuarding && !player.IsAttacking)
+                    {
+                        report.guardGapCancelled = true;
+                        BeginGapWatch(true);
+                    }
+                    else if (phaseTime > .6d) Fail("Guard did not cancel the first heavy gap.");
+                    break;
+                case "AwaitDodgeGapCancel":
+                    if (phaseTime > .6d) Fail("Dodge did not cancel the first heavy gap.");
+                    break;
+                case "GuardGapNoDamage":
+                case "DodgeGapNoDamage":
+                    bool watchingGuard = report.phase == "GuardGapNoDamage";
+                    int hits = watchingGuard ? report.guardGapHitCount : report.dodgeGapHitCount;
+                    if (enemy.Health != gapHealthAfterCancel || hits != gapHitsAfterCancel || player.IsAttacking)
+                    { Fail("Cancelled heavy produced a later damage window or restarted itself."); return; }
+                    if (Time.time < gapWatchUntil) return;
+                    if (watchingGuard)
+                    {
+                        report.guardGapNoLateDamage = true;
+                        PrepareGapTest(false);
+                    }
+                    else
+                    {
+                        report.dodgeGapNoLateDamage = true;
+                        Finish();
+                    }
                     break;
             }
         }
         catch (Exception e) { Fail(e.GetBaseException().ToString()); }
+    }
+
+    static void PrepareGapTest(bool guard)
+    {
+        player.ResetActor();
+        enemy.ResetActor();
+        fighter.ResetPose();
+        PositionPlayer();
+        SetPhase(guard ? "SettleGuardGap" : "SettleDodgeGap");
+    }
+
+    static void BeginGapWatch(bool guard)
+    {
+        gapHealthAfterCancel = enemy.Health;
+        gapHitsAfterCancel = guard ? report.guardGapHitCount : report.dodgeGapHitCount;
+        float cancelAt = guard ? report.guardGapCancelAt : report.dodgeGapCancelAt;
+        // Observe through the entire abandoned combo. The target must not take
+        // invisible later hits; the guard case also keeps the player in range.
+        gapWatchUntil = Time.time + Mathf.Max(.5f, gapAttackDuration - cancelAt) + .25f;
+        SetPhase(guard ? "GuardGapNoDamage" : "DodgeGapNoDamage");
     }
 
     static void PositionPlayer()
@@ -242,7 +342,58 @@ public static class CombatFeelPlaythrough
     {
         if (!report.active || target != enemy || damage <= 0 || player.CurrentAttack == null) return;
         if (player.CurrentAttack.motion == CombatMotion.Light) report.lightHitCount++;
-        if (player.CurrentAttack.motion == CombatMotion.Heavy) report.heavyHitCount++;
+        if (player.CurrentAttack.motion == CombatMotion.Heavy)
+        {
+            if (report.phase == "Heavy") report.heavyHitCount++;
+            else if (report.phase == "GuardGapHeavy" || report.phase == "AwaitGuardGapCancel" || report.phase == "GuardGapNoDamage")
+                report.guardGapHitCount++;
+            else if (report.phase == "DodgeGapHeavy" || report.phase == "AwaitDodgeGapCancel" || report.phase == "DodgeGapNoDamage")
+                report.dodgeGapHitCount++;
+        }
+    }
+    static void OnSweep(CombatMotion motion, float before, float clock, Vector3 start, Vector3 end)
+    {
+        if (!report.active || player == null || enemy == null || report.sweeps.Count > 400) return;
+        var sample = new SweepDiagnostic
+        {
+            phase = report.phase, motion = motion.ToString(), frame = Time.frameCount,
+            before = before, clock = clock,
+            clipTime = player.Animation.NormalizedTime * player.Animation.MotionLength(motion),
+            playerPosition = player.transform.position, targetPosition = enemy.transform.position,
+            targetDistance = Vector3.Distance(player.transform.position, enemy.transform.position),
+            bladeBase = start, bladeTip = end, targetHealth = enemy.Health,
+            targetLocked = enemy.ControlLocked, targetInvulnerable = enemy.Invulnerable,
+            previousBladeValid = (bool)typeof(CombatActor).GetField("hasPreviousBlade", Hidden).GetValue(player),
+            lineOfSight = player.HasLineOfSight(enemy), bladeClearance = float.PositiveInfinity, window = -1
+        };
+        var definition = player.CurrentAttack;
+        if (definition != null)
+        {
+            var windows = definition.hitWindows;
+            if (windows == null || windows.Length == 0)
+            {
+                if (clock >= definition.activeStart && before <= definition.activeEnd) sample.window = 0;
+            }
+            else for (int i = 0; i < windows.Length; i++)
+                if (windows[i] != null && clock >= windows[i].start && before <= windows[i].end) { sample.window = i; break; }
+        }
+        var capsule = enemy.GetComponent<CharacterController>();
+        if (capsule != null && capsule.enabled)
+            for (int i = 0; i <= 24; i++)
+            {
+                Vector3 point = Vector3.Lerp(start, end, i / 24f);
+                sample.bladeClearance = Mathf.Min(sample.bladeClearance, Vector3.Distance(point, capsule.ClosestPoint(point)));
+            }
+        foreach (Collider collider in Physics.OverlapCapsule(start, end, player.BladeRadius, player.collisionMask, QueryTriggerInteraction.Ignore))
+            if (collider.GetComponentInParent<CombatActor>() == enemy) sample.overlapsTarget = true;
+        Vector3 delta = end - start;
+        float nearest = delta.magnitude;
+        if (nearest > .001f)
+            foreach (var hit in Physics.RaycastAll(start, delta / nearest, nearest, player.collisionMask, QueryTriggerInteraction.Ignore))
+                if (!hit.transform.IsChildOf(player.transform) && hit.collider.GetComponentInParent<CombatActor>() == null && hit.distance < nearest)
+                { nearest = hit.distance; sample.obstruction = hit.collider.name; }
+        sample.obstructionDistance = nearest;
+        report.sweeps.Add(sample);
     }
     static void OnActionPerformed(CombatMotion motion)
     {
@@ -270,6 +421,15 @@ public static class CombatFeelPlaythrough
             report.dodgeFromRecovery = report.heavyRecoveryAt < report.heavyFullDuration - .05f;
             SetPhase("Dodge");
         }
+        else if (motion == CombatMotion.Heavy && fighter.State == PrototypeFighter.ActionState.HeavyAttack && player.IsAttacking
+            && (report.phase == "AwaitGuardGapStart" || report.phase == "AwaitDodgeGapStart"))
+            SetPhase(report.phase == "AwaitGuardGapStart" ? "GuardGapHeavy" : "DodgeGapHeavy");
+        else if (motion == CombatMotion.Dodge && report.phase == "AwaitDodgeGapCancel"
+            && fighter.State == PrototypeFighter.ActionState.Dodge && !player.IsAttacking)
+        {
+            report.dodgeGapCancelled = true;
+            BeginGapWatch(false);
+        }
     }
     static void OnLog(string message, string stack, LogType type)
     {
@@ -293,11 +453,16 @@ public static class CombatFeelPlaythrough
     {
         ObserveTime();
         if (!report.lightStarted || report.lightHitCount < 1) report.failures.Add("No actual light-attack weapon hit observed.");
-        if (!report.heavyStarted || report.heavyHitCount < 1) report.failures.Add("No actual heavy-attack weapon hit observed.");
+        if (!report.heavyStarted || report.heavyHitCount != 4) report.failures.Add("The uninterrupted heavy did not produce all four real weapon hits.");
+        if (!report.guardGapCancelled || !report.dodgeGapCancelled || !report.guardGapNoLateDamage || !report.dodgeGapNoLateDamage)
+            report.failures.Add("First-gap guard/dodge exits with no later combo damage were not confirmed.");
+        if (report.guardGapHitCount != 1 || report.dodgeGapHitCount != 1)
+            report.failures.Add("Defensively cancelled heavy must land only its first real strike.");
         if (report.turnDegrees < 5f) report.failures.Add("Expected visible early attack-facing correction was not observed.");
         if (!report.guardFromRecovery || !report.dodgeFromRecovery) report.failures.Add("Early recovery guard/dodge was not confirmed.");
         if (!report.framesAdvanced || !report.gameTimeAdvanced) report.failures.Add("Live frames and game time did not advance sufficiently.");
-        if (report.lightRequests != 1 || report.heavyRequests != 1 || report.dodgeRequests != 1)
+        if (report.lightRequests != 1 || report.heavyRequests != 1 || report.dodgeRequests != 1
+            || report.gapHeavyRequests != 2 || report.gapDodgeRequests != 1)
             report.failures.Add("Expected exactly one request for each driven attack/dodge.");
         if (report.runtimeErrors > 0) report.failures.Add("Runtime errors during playthrough: " + report.runtimeErrors);
         report.active = false; report.completed = true; report.passed = report.failures.Count == 0;
@@ -315,6 +480,7 @@ public static class CombatFeelPlaythrough
         EditorApplication.update -= Tick;
         Application.logMessageReceived -= OnLog;
         if (player != null) player.HitLanded -= OnHit;
+        if (player != null) player.AttackPoseSampled -= OnSweep;
         if (fighter != null) fighter.ActionPerformed -= OnActionPerformed;
     }
 }

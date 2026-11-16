@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace FengChenInn
@@ -8,6 +9,9 @@ namespace FengChenInn
         public enum Behaviour { Waiting, Approach, Windup, Strike, Recovery, Stagger, Defeated }
         public float moveSpeed = 2.1f, turnSpeed = 420f, engageDistance = 1.45f;
         public float attackInterval = .65f, detectionRadius = 30f;
+        [Header("Readable group combat")]
+        public bool coordinateGruntAttacks = true;
+        [Min(0f)] public float sharedAttackGap = .28f;
         public CombatAttack[] attacks = System.Array.Empty<CombatAttack>();
         public bool CombatEnabled { get; private set; }
         public CombatActor Target { get; private set; }
@@ -18,11 +22,18 @@ namespace FengChenInn
         bool groundedFromGravity;
         int nextAttack;
         CombatActor openingTarget;
+        CombatActor reservedTarget;
+        static readonly Dictionary<CombatActor, EnemyCombatAI> attackers = new();
+        static readonly Dictionary<CombatActor, float> nextOpening = new();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetCoordination() { attackers.Clear(); nextOpening.Clear(); }
 
         void Awake() { Actor = GetComponent<CombatActor>(); motor = GetComponent<CharacterController>(); }
 
         public void SetCombatEnabled(bool value)
         {
+            ReleaseAttackTurn();
             if (Actor == null) Actor = GetComponent<CombatActor>();
             CombatEnabled = value;
             Target = null;
@@ -35,6 +46,7 @@ namespace FengChenInn
 
         public void ClearTarget()
         {
+            ReleaseAttackTurn();
             Target = null;
             openingTarget = null;
             Actor.CancelAttack();
@@ -60,6 +72,8 @@ namespace FengChenInn
         {
             float dt = Time.deltaTime;
             if (dt <= 0f || Actor == null) return;
+            if (!Actor.IsAttacking) ReleaseAttackTurn();
+            if (Actor.IsHitPaused) return;
             if (Actor.IsDefeated) { State = Behaviour.Defeated; return; }
             if (!motor.enabled) return;
             if (Actor.ControlLocked) return;
@@ -115,13 +129,84 @@ namespace FengChenInn
             {
                 State = cooldown > 0f ? Behaviour.Recovery : Behaviour.Approach;
                 SetLocomotion(0f);
-                if (cooldown <= 0f && Vector3.Angle(transform.forward, toward) < 25f && Actor.HasLineOfSight(Target))
+                if (cooldown <= 0f && Vector3.Angle(transform.forward, toward) < 25f && Actor.HasLineOfSight(Target)
+                    && CanStartAttackTurn())
                 {
                     CombatAttack chosen = NextAvailableAttack();
-                    if (chosen != null && Actor.TryAttack(chosen)) { nextAttack++; openingTarget = null; }
+                    if (chosen != null && Actor.TryAttack(chosen))
+                    {
+                        ClaimAttackTurn();
+                        nextAttack++;
+                        openingTarget = null;
+                    }
                     else cooldown = .5f;
                 }
             }
+        }
+
+        bool CanStartAttackTurn()
+        {
+            if (!coordinateGruntAttacks || Actor.Role != CombatRole.Grunt || Target == null) return true;
+            // A grunt outside the player's view may approach, but must not begin
+            // a fresh blindside swing. Already telegraphed attacks still finish.
+            if (Target.Role == CombatRole.Player && Camera.main != null)
+            {
+                Vector3 viewport = Camera.main.WorldToViewportPoint(transform.position + Vector3.up);
+                if (viewport.z <= Camera.main.nearClipPlane || viewport.x < -.05f || viewport.x > 1.05f
+                    || viewport.y < -.1f || viewport.y > 1.1f) return false;
+            }
+            if (attackers.TryGetValue(Target, out var other))
+            {
+                bool stillAttacking = other != null && other.isActiveAndEnabled && other.CombatEnabled
+                    && other.Actor != null && !other.Actor.IsDefeated && !other.Actor.ControlLocked
+                    && other.Actor.IsAttacking;
+                if (stillAttacking && other != this) return false;
+                if (!stillAttacking)
+                {
+                    // The previous actor may finish in LateUpdate, before its AI
+                    // gets another Update. Release it BEFORE checking the gap so
+                    // a different AI's earlier Update cannot steal the turn.
+                    if (other != null) other.ReleaseAttackTurn();
+                    if (attackers.ContainsKey(Target))
+                    {
+                        attackers.Remove(Target);
+                        nextOpening[Target] = Time.time + sharedAttackGap;
+                    }
+                }
+            }
+            if (nextOpening.TryGetValue(Target, out float opensAt))
+            {
+                if (Time.time < opensAt) return false;
+                nextOpening.Remove(Target);
+            }
+            return true;
+        }
+
+        void ClaimAttackTurn()
+        {
+            if (!coordinateGruntAttacks || Actor.Role != CombatRole.Grunt || Target == null) return;
+            attackers[Target] = this;
+            reservedTarget = Target;
+        }
+
+        void ReleaseAttackTurn()
+        {
+            if (object.ReferenceEquals(reservedTarget, null)) return;
+            if (attackers.TryGetValue(reservedTarget, out var owner) && owner == this)
+            {
+                attackers.Remove(reservedTarget);
+                if (reservedTarget != null) nextOpening[reservedTarget] = Time.time + sharedAttackGap;
+            }
+            reservedTarget = null;
+        }
+
+        void OnDisable() => ReleaseAttackTurn();
+        void OnDestroy()
+        {
+            ReleaseAttackTurn();
+            if (object.ReferenceEquals(Actor, null)) return;
+            attackers.Remove(Actor);
+            nextOpening.Remove(Actor);
         }
 
         void SelectTarget()

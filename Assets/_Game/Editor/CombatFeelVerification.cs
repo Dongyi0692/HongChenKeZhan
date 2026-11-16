@@ -140,6 +140,7 @@ public static class CombatFeelVerification
             first.ReceiveDamage(player, 20, 0f, 0f);
             check(landed == 1 && first.Health == initialHealth - 20, "Invulnerability never produces a damaging-hit confirmation");
             first.ResetActor();
+            player.ResetActor(); // Isolate the following combo from the preceding contact pause.
 
             var fighter = player.gameObject.AddComponent<PrototypeFighter>();
             fighter.RefreshBindings();

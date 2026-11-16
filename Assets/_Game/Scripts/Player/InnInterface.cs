@@ -58,6 +58,7 @@ namespace FengChenInn
         private float shortLineUntil, fightLength, arrivalAt, rescueAt, hintUntil;
         private float battleStartFightLength;
         private bool battleStartDoorOpen;
+        private bool watchingSkirmish;
         private bool lightHit, heavyHit, defended;
         private RectTransform targetMarker;
         private readonly List<UnityEngine.UI.Image> targetStrokes = new();
@@ -322,7 +323,12 @@ namespace FengChenInn
             fighter.ClearInput();
             PrototypeInput.SetCursor(play);
             bool titleView = next == View.Title || (next == View.Settings && settingsReturn == View.Title);
-            if (orbit != null) orbit.enabled = !titleView && next != View.Dialogue;
+            if (orbit != null)
+            {
+                orbit.enabled = !titleView;
+                if (play) orbit.ResumeFollow();
+            }
+            watchingSkirmish = false;
             if (titleView && sceneCamera != null)
             {
                 var position = new Vector3(4.9f, 2.9f, -11.8f);
@@ -421,9 +427,11 @@ namespace FengChenInn
         {
             // Briefly frame the actual ally/enemy skirmish; the player can still move.
             bool watchSkirmish = part == StoryPart.ReturnToHelp && Time.time < rescueAt + 2f;
-            if (orbit != null) orbit.enabled = !watchSkirmish;
-            if (watchSkirmish) FrameActors(duel.EliteActor != null ? duel.EliteActor.transform : null,
-                duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null);
+            if (watchSkirmish && !watchingSkirmish)
+                FrameActors(duel.EliteActor != null ? duel.EliteActor.transform : null,
+                    duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null);
+            else if (!watchSkirmish && watchingSkirmish && orbit != null) orbit.ResumeFollow();
+            watchingSkirmish = watchSkirmish;
             bool battle = IsCombatPart && duel.IsCombatActive;
             input.StoryAllowsCombat = battle;
             UpdateMeters(battle);
@@ -438,7 +446,7 @@ namespace FengChenInn
             {
                 part = StoryPart.EliteArriving;
                 input.StoryAllowsCombat = false;
-                arrivalAt = Time.time + 1.5f;
+                arrivalAt = Time.time + 1.1f;
                 Say("红拂女 · 借宿的路，也要拿剑来换。\n门外又响起了脚步声。", 4.5f);
             }
             if (part == StoryPart.EliteFight && duel.Stage == DuelEncounter.EncounterStage.EliteVictory)
@@ -597,8 +605,20 @@ namespace FengChenInn
                     }
                     return "走近驻守小兵 · E 交谈";
                 case StoryPart.EliteArriving:
-                    if (Time.time >= arrivalAt) OpenDialogue(BeginEliteFight, InnStoryScript.BeforeFight);
-                    return "追兵抵达客栈";
+                    if (!duel.EliteEntranceInProgress && !duel.EliteEntranceComplete && Time.time >= arrivalAt)
+                    {
+                        if (!duel.BeginEliteEntrance())
+                        {
+                            arrivalAt = float.PositiveInfinity;
+                            Say("追兵尚未进门，请留出门口通道，按 E 重试。", 6f);
+                        }
+                    }
+                    if (interact && !duel.EliteEntranceInProgress && !duel.EliteEntranceComplete)
+                        arrivalAt = Time.time;
+                    if (duel.EliteEntranceReadyForDialogue && duel.EliteActor != null && Near(duel.EliteActor.transform.position, 4f))
+                        OpenDialogue(BeginEliteFight, InnStoryScript.BeforeFight);
+                    return duel.EliteEntranceComplete ? "追兵已在门边 · 靠近交谈"
+                        : duel.EliteEntranceInProgress ? "追兵正在入栈 · 留出门口通道" : "门外传来脚步声";
                 case StoryPart.EliteFight:
                     return "看清起手，等对手收势再反击";
                 case StoryPart.Departure:
@@ -681,9 +701,9 @@ namespace FengChenInn
             if (entrance != null) entrance.OpenRequested = true;
             RememberBattleStart();
             Show(View.Play);
-            if (orbit != null) orbit.enabled = false;
             FrameActors(duel.EliteActor != null ? duel.EliteActor.transform : null,
                 duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null);
+            watchingSkirmish = true;
             Say("红拂女 · 他替我挡了这一回。\n路还长，不能把人情留在雨里。", 6f);
         }
 
@@ -738,6 +758,7 @@ namespace FengChenInn
                 Transform target = (part == StoryPart.Departure || part == StoryPart.ReturnToHelp || part == StoryPart.Finished)
                     && duel.EliteActor != null ? duel.EliteActor.transform
                     : duel.ActiveEnemy != null ? duel.ActiveEnemy.transform : null;
+                FaceDialogueParticipants(target);
                 FrameActors(fighter.transform, target);
             }
             RenderLine();
@@ -745,13 +766,30 @@ namespace FengChenInn
 
         private void FrameActors(Transform a, Transform b)
         {
-            if (sceneCamera == null || a == null || b == null) return;
-            Vector3 center = (a.position + b.position) * .5f + Vector3.up * 1.12f;
-            Vector3 side = Vector3.Cross(Vector3.up, Vector3.ProjectOnPlane(b.position - a.position, Vector3.up)).normalized;
-            if (side.sqrMagnitude < .1f) side = Vector3.right;
-            float distance = Mathf.Clamp(Vector3.Distance(a.position, b.position) * .7f, 3f, 6f);
-            Vector3 cameraPosition = center + side * distance + Vector3.up * .35f;
-            sceneCamera.transform.SetPositionAndRotation(cameraPosition, Quaternion.LookRotation(center - cameraPosition));
+            if (orbit == null || a == null || b == null) return;
+            orbit.enabled = true;
+            orbit.FrameActors(a, b);
+        }
+
+        private void FaceDialogueParticipants(Transform other)
+        {
+            if (other == null || fighter == null) return;
+            Vector3 toward = Vector3.ProjectOnPlane(other.position - fighter.transform.position, Vector3.up);
+            if (toward.sqrMagnitude < .001f) return;
+            if (duel.PlayerActor != null && !duel.PlayerActor.IsDefeated)
+            {
+                fighter.PlaceForStory(fighter.transform.position, Quaternion.LookRotation(toward));
+                // PlaceForStory requests a short idle fade, but dialogue has
+                // already paused time. Sample the finished stance explicitly.
+                duel.PlayerActor.Animation?.SettleForDialogue(duel.IsCombatActive);
+            }
+            var actor = other.GetComponent<CombatActor>();
+            if (actor != null && !actor.IsDefeated)
+            {
+                actor.CancelAttack();
+                other.rotation = Quaternion.LookRotation(-toward);
+                actor.Animation?.SettleForDialogue(duel.IsCombatActive);
+            }
         }
 
         private void AdvanceDialogue()
@@ -927,8 +965,8 @@ namespace FengChenInn
             if (tutorialControls == null) return;
             var controls = new List<string> { "WASD   跑步与转身", "鼠标   转动视角" };
             if (fighter.IsMotionAvailable(CombatMotion.Light)) controls.Add("鼠标左键   轻击");
-            if (fighter.IsMotionAvailable(CombatMotion.Heavy)) controls.Add("鼠标右键   重击连招");
-            if (fighter.IsMotionAvailable(CombatMotion.Guard)) controls.Add("Q（按住）   面向来招格挡，消耗体力");
+            if (fighter.IsMotionAvailable(CombatMotion.Heavy)) controls.Add("鼠标右键   四式重击；式间可用格挡或闪避退出");
+            if (fighter.IsMotionAvailable(CombatMotion.Guard)) controls.Add("Q（按住）   面敌格挡与缓步移动，消耗体力");
             if (fighter.CanAnimateJump) controls.Add("Space   跳跃，消耗体力");
             if (fighter.IsMotionAvailable(CombatMotion.Dodge)) controls.Add("Shift   闪避，消耗体力");
             if (fighter.IsMotionAvailable(CombatMotion.Skill)) controls.Add("F   地面突进斩");

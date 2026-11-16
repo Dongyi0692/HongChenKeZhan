@@ -14,6 +14,12 @@ namespace FengChenInn
         [Min(.1f)] public float walkSpeed = 2.2f;
         [Min(.1f)] public float acceleration = 16f;
         [Min(.1f)] public float deceleration = 22f;
+        [Header("Indoor movement")]
+        public bool useIndoorMovementTuning = true;
+        [Min(.1f)] public float indoorMoveSpeed = 4.2f;
+        [Min(.1f)] public float indoorAcceleration = 40f;
+        [Min(.1f)] public float indoorBraking = 60f;
+        [Min(0f)] public float guardAdjustmentSpeed = .65f;
         public float jumpHeight = 1.1f;
         public float gravity = -22f;
         public float turnSpeed = 900f;
@@ -28,6 +34,9 @@ namespace FengChenInn
         [Min(0f)] public float jumpStaminaCost = 18f;
         [Min(0f)] public float dodgeStaminaCost = 22f;
         [Min(0f)] public float guardStaminaPerSecond = 12f;
+        public bool useImpactGuardCost = true;
+        [Min(0f)] public float guardHoldStaminaPerSecond = 2f;
+        [Min(0f)] public float guardHitStaminaCost = 9f;
         [Min(0f)] public float staminaRecoveryPerSecond = 24f;
         [Min(0f)] public float staminaRecoveryDelay = .8f;
         [Header("Animation and weapon combat")]
@@ -45,6 +54,9 @@ namespace FengChenInn
         [Range(0f, .5f)] public float lightRecoveryDelay = .12f;
         [Range(0f, .5f)] public float heavyRecoveryDelay = .18f;
         [Range(0f, .5f)] public float skillRecoveryDelay = .16f;
+        [Tooltip("Heavy still plays all strikes by default; guard or dodge can withdraw between strikes.")]
+        public bool allowHeavyDefensiveExit = true;
+        [Range(0f, .3f)] public float betweenStrikeRecovery = .10f;
         public CombatAttack lightAttack = new CombatAttack
         {
             motion = CombatMotion.Light, damage = 18, duration = .9f,
@@ -80,7 +92,7 @@ namespace FengChenInn
         // issue a horizontal Move in LateUpdate, so keep our gravity-move result.
         public bool IsGrounded => controller != null && controller.enabled && groundedFromMovement && verticalVelocity <= .01f;
         public bool IsGuarding => GuardRequested && IsGrounded && State == ActionState.Ready
-            && !guardExhausted && (guardStaminaPerSecond <= 0f || Stamina > .001f)
+            && !guardExhausted && (GuardHoldCost <= 0f && !useImpactGuardCost || Stamina > .001f)
             && !MovementLocked && IsMotionAvailable(CombatMotion.Guard);
         public bool IsRunning { get; private set; }
         public bool IsInvulnerable => State == ActionState.Dodge && actionTime >= dodgeInvulnerability.x
@@ -121,10 +133,15 @@ namespace FengChenInn
             ? (actor.IsAttacking ? attackTarget : selectedTarget) : null;
         public bool CanExitAttackRecovery => actor != null && actor.IsAttacking && !MovementLocked
             && actor.AttackElapsed >= actor.LastHitTime + RecoveryDelay(actor.CurrentAttack.motion);
+        public bool CanDefendCancelAttack => CanExitAttackRecovery || allowHeavyDefensiveExit
+            && actor != null && actor.IsAttacking && !MovementLocked
+            && actor.CurrentAttack.motion == CombatMotion.Heavy && actor.IsBetweenStrikes(betweenStrikeRecovery, .08f);
+        public float EffectiveMoveSpeed => useIndoorMovementTuning ? indoorMoveSpeed : moveSpeed;
+        private float GuardHoldCost => useImpactGuardCost ? guardHoldStaminaPerSecond : guardStaminaPerSecond;
         private enum BufferedAction { None, Jump, Light, Heavy, Dodge, Skill }
         private CharacterController controller;
         private CombatActor actor, subscribedActor;
-        private CombatActor selectedTarget, attackTarget;
+        private CombatActor selectedTarget, attackTarget, guardTarget;
         private Vector3 attackIntent;
         private DuelEncounter encounter;
         private Vector3 spawnPosition, planarVelocity, dodgeDirection, skillDirection;
@@ -154,14 +171,14 @@ namespace FengChenInn
             actor = GetComponent<CombatActor>();
             encounter = GetComponent<DuelEncounter>();
             if (subscribedActor == actor) return;
-            if (subscribedActor != null) subscribedActor.Damaged -= OnDamaged;
+            if (subscribedActor != null) { subscribedActor.Damaged -= OnDamaged; subscribedActor.Blocked -= OnBlocked; }
             subscribedActor = actor;
-            if (subscribedActor != null) subscribedActor.Damaged += OnDamaged;
+            if (subscribedActor != null) { subscribedActor.Damaged += OnDamaged; subscribedActor.Blocked += OnBlocked; }
         }
         private void OnDestroy()
         {
             RestoreLegacyDodgePose();
-            if (subscribedActor != null) subscribedActor.Damaged -= OnDamaged;
+            if (subscribedActor != null) { subscribedActor.Damaged -= OnDamaged; subscribedActor.Blocked -= OnBlocked; }
         }
         public bool IsMotionAvailable(CombatMotion motion) => animationDriver != null
             && animationDriver.Ready && (animationDriver.HasMotion(motion)
@@ -248,7 +265,7 @@ namespace FengChenInn
             if (!enableTargetAssist || actor == null || actor.IsDefeated || actor.ControlLocked
                 || encounter != null && !encounter.IsCombatActive)
             { selectedTarget = null; return; }
-            Vector3 intent = CameraMovement();
+            Vector3 intent = GuardRequested ? transform.forward : CameraMovement();
             if (intent.sqrMagnitude < .01f) intent = transform.forward;
             selectedTarget = CombatTargeting.Select(actor, Camera.main, intent,
                 Mathf.Min(targetAssistDistance, range + .35f), targetAssistHalfAngle, selectedTarget);
@@ -263,8 +280,9 @@ namespace FengChenInn
             if (toward.sqrMagnitude < .001f || toward.magnitude > Mathf.Min(targetAssistDistance, actor.CurrentAttack.range + .35f)
                 || Vector3.Angle(attackIntent, toward) > targetAssistHalfAngle || !actor.HasLineOfSight(attackTarget))
             { attackTarget = null; return; }
-            if (MovementLocked || actor.AttackElapsed >= Mathf.Min(attackTurnTime, actor.FirstHitTime * .75f)) return;
-            actor.SetAttackFacing(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toward), attackTurnSpeed * dt));
+            bool comboWindup = actor.CurrentAttack.motion == CombatMotion.Heavy && actor.IsComboWindup(attackTurnTime);
+            if (MovementLocked || !comboWindup && actor.AttackElapsed >= Mathf.Min(attackTurnTime, actor.FirstHitTime * .75f)) return;
+            actor.SetAttackFacing(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toward), attackTurnSpeed * dt), comboWindup, attackTurnTime);
             skillDirection = transform.forward;
         }
 
@@ -279,12 +297,20 @@ namespace FengChenInn
         {
             if (TryExecute(requested)) { queuedAction = BufferedAction.None; return true; }
             bool available = requested == BufferedAction.Jump ? CanAnimateJump : IsMotionAvailable(MotionFor(requested));
-            if (!MovementLocked && available)
+            if (CanBufferInput() && available)
             {
                 queuedAction = requested;
                 queuedUntil = Time.time + inputBufferTime;
             }
             return false;
+        }
+        private bool CanBufferInput()
+        {
+            if (actor != null && (actor.IsDefeated || actor.ControlLocked)) return false;
+            // Only the final short part of hitstun accepts an early input. A
+            // long stun must never release a stale attack several seconds later.
+            return !MovementLocked || !impact.Active && actor != null && actor.IsStunned
+                && actor.StunRemaining <= inputBufferTime;
         }
         private static CombatMotion MotionFor(BufferedAction action) => action switch
         {
@@ -298,9 +324,11 @@ namespace FengChenInn
         {
             CombatAttack requestedAttack = requested == BufferedAction.Heavy ? heavyAttack
                 : requested == BufferedAction.Skill ? skillAttack : requested == BufferedAction.Light ? lightAttack : null;
-            // Never cut a multi-hit combo between its individual hit windows.
-            // Unavailable/costly inputs must not cancel the current action for free.
-            if (CanExitAttackRecovery && IsGrounded && Time.time >= landingUntil
+            if (actor != null && actor.IsHitPaused) return false;
+            // Only defensive actions may abandon the remaining heavy strikes.
+            // Unavailable/costly inputs cannot cancel an action for free.
+            bool mayExit = CanExitAttackRecovery || requested == BufferedAction.Dodge && CanDefendCancelAttack;
+            if (mayExit && IsGrounded && Time.time >= landingUntil
                 && (requested == BufferedAction.Jump ? CanAnimateJump && !IsGuarding && Stamina >= jumpStaminaCost
                     : IsMotionAvailable(MotionFor(requested))
                         && (requested == BufferedAction.Dodge || requestedAttack != null && actor.HasWeapon)
@@ -383,6 +411,13 @@ namespace FengChenInn
             float dt = Time.deltaTime;
             if (dt <= 0f || controller == null || !controller.enabled) return;
             if (actor == null || animationDriver == null) RefreshBindings();
+            if (actor != null && actor.IsHitPaused)
+            {
+                // A few contact-stop frames must not consume the player's short
+                // pre-input window while the recovery clock itself is frozen.
+                if (queuedAction != BufferedAction.None) queuedUntil += dt;
+                return;
+            }
             if (actor == null || !actor.IsAttacking)
                 RefreshTarget(Mathf.Max(lightAttack != null ? lightAttack.range : 0f, heavyAttack != null ? heavyAttack.range : 0f));
             UpdateAttackFacing(dt);
@@ -393,13 +428,17 @@ namespace FengChenInn
             if ((State == ActionState.LightAttack || State == ActionState.HeavyAttack || State == ActionState.Skill)
                 && (actor == null || !actor.IsAttacking)) State = ActionState.Ready;
             bool finishingDodge = State == ActionState.Dodge && actionTime >= dodgeDuration;
-            if (MovementLocked) { State = ActionState.Ready; queuedAction = BufferedAction.None; }
-            bool recoverToGuard = CanExitAttackRecovery && GuardRequested && IsGrounded && !guardExhausted
-                && (guardStaminaPerSecond <= 0f || Stamina > .001f) && IsMotionAvailable(CombatMotion.Guard);
+            if (MovementLocked)
+            {
+                State = ActionState.Ready;
+                if (!CanBufferInput()) queuedAction = BufferedAction.None;
+            }
+            bool recoverToGuard = CanDefendCancelAttack && GuardRequested && IsGrounded && !guardExhausted
+                && (GuardHoldCost <= 0f && !useImpactGuardCost || Stamina > .001f) && IsMotionAvailable(CombatMotion.Guard);
             // A defensive hold supersedes a previously queued attack, but not a newer dodge.
             if (recoverToGuard && (queuedAction == BufferedAction.Light || queuedAction == BufferedAction.Heavy || queuedAction == BufferedAction.Skill))
                 queuedAction = BufferedAction.None;
-            if (CanExitAttackRecovery && (MoveInput.sqrMagnitude > .01f || recoverToGuard))
+            if (recoverToGuard || CanExitAttackRecovery && MoveInput.sqrMagnitude > .01f)
                 ExitAttackRecovery();
             if (queuedAction != BufferedAction.None)
             {
@@ -412,26 +451,44 @@ namespace FengChenInn
             }
             if (!GuardRequested) guardExhausted = false;
             bool guarding = IsGuarding;
-            if (guarding && guardStaminaPerSecond > 0f)
+            if (guarding && GuardHoldCost > 0f)
             {
-                Stamina = Mathf.Max(0f, Stamina - guardStaminaPerSecond * dt);
+                Stamina = Mathf.Max(0f, Stamina - GuardHoldCost * dt);
                 lastStaminaUseAt = Time.time;
                 if (Stamina <= 0f) { guardExhausted = true; guarding = false; }
             }
             else if (Time.time - lastStaminaUseAt >= staminaRecoveryDelay && (actor == null || !actor.IsDefeated))
                 Stamina = Mathf.Min(maxStamina, Stamina + staminaRecoveryPerSecond * dt);
             if (actor != null) { actor.Guarding = guarding; actor.Invulnerable = IsInvulnerable; }
-            if (guarding && !wasGuarding) { GuardCount++; ActionPerformed?.Invoke(CombatMotion.Guard); }
+            if (guarding && !wasGuarding)
+            {
+                guardTarget = SelectedTarget;
+                GuardCount++;
+                ActionPerformed?.Invoke(CombatMotion.Guard);
+            }
+            if (!guarding) guardTarget = null;
+            else if (CombatTargeting.IsValid(actor, guardTarget)
+                && Vector3.Distance(transform.position, guardTarget.transform.position) <= targetAssistDistance
+                && actor.HasLineOfSight(guardTarget))
+            {
+                Vector3 toward = Vector3.ProjectOnPlane(guardTarget.transform.position - transform.position, Vector3.up);
+                if (toward.sqrMagnitude > .01f)
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toward), turnSpeed * dt);
+            }
             wasGuarding = guarding;
             Vector3 movement = CameraMovement();
             bool canMove = !MovementLocked && State == ActionState.Ready;
-            if (canMove && movement.sqrMagnitude > .001f)
+            // Guard remains directed where the player raised it. In particular,
+            // S must step away from the enemy rather than turn the guard backward.
+            if (canMove && !guarding && movement.sqrMagnitude > .001f)
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(movement), turnSpeed * dt);
             IsRunning = canMove && IsGrounded && !guarding && movement.sqrMagnitude > .01f;
-            float speed = moveSpeed;
-            if (guarding) speed *= guardMoveMultiplier;
+            float speed = EffectiveMoveSpeed;
+            if (guarding) speed = Mathf.Min(speed * guardMoveMultiplier, guardAdjustmentSpeed);
             Vector3 desiredVelocity = canMove ? movement * speed : Vector3.zero;
-            float smoothRate = desiredVelocity.sqrMagnitude > planarVelocity.sqrMagnitude ? acceleration : deceleration;
+            float startRate = useIndoorMovementTuning ? indoorAcceleration : acceleration;
+            float stopRate = useIndoorMovementTuning ? indoorBraking : deceleration;
+            float smoothRate = desiredVelocity.sqrMagnitude > planarVelocity.sqrMagnitude ? startRate : stopRate;
             planarVelocity = Vector3.MoveTowards(planarVelocity, desiredVelocity, smoothRate * dt);
             if (!canMove) planarVelocity = Vector3.zero;
             Vector3 displacement = planarVelocity * dt;
@@ -503,6 +560,19 @@ namespace FengChenInn
             planarVelocity = Vector3.zero;
             // CombatActor owns the hit pose and controller-based knockback.
         }
+        private void OnBlocked(CombatActor source)
+        {
+            if (!useImpactGuardCost) return;
+            float multiplier = source != null && source.CurrentAttack != null
+                && source.CurrentAttack.motion == CombatMotion.Heavy ? 1.5f : 1f;
+            Stamina = Mathf.Max(0f, Stamina - guardHitStaminaCost * multiplier);
+            lastStaminaUseAt = Time.time;
+            if (Stamina <= 0f)
+            {
+                guardExhausted = true;
+                if (actor != null) actor.Guarding = false;
+            }
+        }
         public void ReceiveHit(Vector3 away, float distance)
         {
             impact.Start(away, distance);
@@ -515,7 +585,7 @@ namespace FengChenInn
             MoveInput = Vector2.zero;
             RunRequested = GuardRequested = CrouchRequested = false;
             queuedAction = BufferedAction.None;
-            selectedTarget = attackTarget = null;
+            selectedTarget = attackTarget = guardTarget = null;
             if (actor != null) actor.Guarding = false;
         }
         public void ResetPose()
@@ -544,6 +614,7 @@ namespace FengChenInn
             State = ActionState.Ready;
             ClearInput();
             if (actor != null) { actor.CancelAttack(); actor.Invulnerable = false; }
+            if (animationDriver != null) animationDriver.ClearImpactPause();
             CombatMotion rest = encounter != null && encounter.IsCombatActive ? CombatMotion.Idle : CombatMotion.ExplorationIdle;
             if (animationDriver != null && animationDriver.Ready && animationDriver.HasMotion(rest))
                 animationDriver.Play(rest, .1f);
