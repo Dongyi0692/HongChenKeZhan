@@ -92,9 +92,10 @@ public static class StageRetryVerification
         {
             ShowPlay();
             PlacePlayerNear(duel.TutorialActor);
+            PrepareWoundedBattleStart();
             Call("BeginTutorialFight");
         }
-        else if (stageIndex == 2) Call("BeginRescue");
+        else if (stageIndex == 2) { PrepareWoundedBattleStart(); Call("BeginRescue"); }
         else throw new InvalidOperationException("Elite battle must begin through the actual entrance and dialogue.");
         RecordBattleStart();
     }
@@ -102,6 +103,9 @@ public static class StageRetryVerification
     static void RecordBattleStart()
     {
         Require(duel.Stage == ExpectedStage && duel.IsCombatActive, "Could not start expected battle " + ExpectedStage);
+        Check(player.Health == player.MaxHealth, ExpectedStage + " heals the wounded player to full on first entry");
+        Check(Mathf.Approximately(fighter.Stamina, 37f) && fighter.SkillCooldownRemaining == 0f,
+            ExpectedStage + " stage-entry healing preserves stamina and adds no skill cooldown");
         if (input != null) input.enabled = false;
         SuspendBrains();
         opponents.Clear();
@@ -121,6 +125,13 @@ public static class StageRetryVerification
         Check(duel.CanRetryCurrentBattle && duel.RetryStage == ExpectedStage, ExpectedStage + " records its own retry checkpoint");
         Check(opponents.Count == (stageIndex == 2 ? Mathf.Max(1, duel.RescueEnemyCount) : 1), ExpectedStage + " starts with expected enemy count");
         SetPhase("Running");
+    }
+
+    static void PrepareWoundedBattleStart()
+    {
+        player.ResetActor(Mathf.Max(1, player.MaxHealth / 3));
+        typeof(PrototypeFighter).GetProperty("Stamina").GetSetMethod(true).Invoke(fighter, new object[] { 37f });
+        Check(player.Health < player.MaxHealth, ExpectedStage + " entry fixture begins wounded");
     }
 
     static void Tick()
@@ -266,6 +277,7 @@ public static class StageRetryVerification
                 case "EliteDialogueCaptured":
                     if (Time.frameCount < phaseFrame + 2) return;
                     stageIndex = 1; attempt = 0;
+                    PrepareWoundedBattleStart();
                     FinishDialogue();
                     RecordBattleStart();
                     Check(duel.EliteEntranceComplete, "Second-stage checkpoint is captured after the actual entrance");
@@ -312,7 +324,6 @@ public static class StageRetryVerification
         Require(duel.IsCombatActive && View == "Play", "Failure injection requires a running battle.");
         fighter.ClearInput();
         typeof(PrototypeFighter).GetProperty("Stamina").GetSetMethod(true).Invoke(fighter, new object[] { 7f });
-        typeof(PrototypeFighter).GetField("skillReadyAt", Hidden).SetValue(fighter, Time.time + 99f);
         if (stageIndex == 2)
         {
             Kill(duel.EliteActor, opponents[opponents.Count - 1]);

@@ -329,6 +329,7 @@ namespace FengChenInn
             }
             enemies.Clear();
             enemies.AddRange(reinforcements);
+            PlayerActor.RestoreHealthToFull();
             foreach (var reinforcement in reinforcements)
             {
                 reinforcement.ControlLocked = false;
@@ -508,6 +509,7 @@ namespace FengChenInn
         void StartCombat(EncounterStage stage, CombatActor opponent)
         {
             StopCombat(); enemies.Clear(); enemies.Add(opponent);
+            PlayerActor.RestoreHealthToFull();
             combatRunning = true;
             PlayerActor.ControlLocked = false;
             opponent.ControlLocked = false;

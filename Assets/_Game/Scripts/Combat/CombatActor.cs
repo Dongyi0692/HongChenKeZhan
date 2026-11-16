@@ -190,6 +190,12 @@ namespace FengChenInn
             if (motor != null) motor.enabled = true;
         }
 
+        // Stage entry heals only; it must not reset stamina, cooldowns, pose or allegiance.
+        public void RestoreHealthToFull()
+        {
+            if (!IsDefeated) Health = maxHealth;
+        }
+
         void RestoreDefeatVisuals()
         {
             if (hiddenDefeatRenderers != null)

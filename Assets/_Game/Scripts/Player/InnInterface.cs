@@ -655,7 +655,7 @@ namespace FengChenInn
             if (!defended && fighter.IsMotionAvailable(CombatMotion.Guard)) return "看他抬剑 · 面向来招，按住 Q 格挡";
             if (!heavyHit && fighter.IsMotionAvailable(CombatMotion.Heavy)) return "等他挥空 · 鼠标右键重击，命中一次";
             if (fighter.CanAnimateJump && fighter.JumpCount == 0) return "Space 跳跃 · 跳跃会消耗体力";
-            if (fighter.IsMotionAvailable(CombatMotion.Skill) && fighter.SkillCount == 0) return "看准方向 · F 发动地面突进斩";
+            if (fighter.IsMotionAvailable(CombatMotion.Skill) && fighter.SkillCount == 0) return $"看准方向 · F 地面突进斩（{fighter.skillStaminaCost:0} 体力）";
             return "击退驻守小兵 · 看清起手，等收势再反击";
         }
 
@@ -998,7 +998,7 @@ namespace FengChenInn
             if (fighter.IsMotionAvailable(CombatMotion.Guard)) controls.Add("Q（按住）   面敌格挡与缓步移动，消耗体力");
             if (fighter.CanAnimateJump) controls.Add("Space   跳跃，消耗体力");
             if (fighter.IsMotionAvailable(CombatMotion.Dodge)) controls.Add("Shift   闪避，消耗体力");
-            if (fighter.IsMotionAvailable(CombatMotion.Skill)) controls.Add("F   地面突进斩");
+            if (fighter.IsMotionAvailable(CombatMotion.Skill)) controls.Add($"F   地面突进斩 · {fighter.skillStaminaCost:0} 体力 · 无冷却");
             controls.Add("E   交谈 / 推门    F1   查看操作");
             controls.Add("Esc   暂停    R   战斗中重试本段 / 探索时重新开始");
             controls.Add("敌人身上的方框表示攻击目标；右侧提示命中或被格挡。");

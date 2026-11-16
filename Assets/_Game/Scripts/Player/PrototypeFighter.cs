@@ -33,6 +33,7 @@ namespace FengChenInn
         [HideInInspector] public float runStaminaPerSecond = 16f;
         [Min(0f)] public float jumpStaminaCost = 18f;
         [Min(0f)] public float dodgeStaminaCost = 22f;
+        [Min(0f)] public float skillStaminaCost = 30f;
         [Min(0f)] public float guardStaminaPerSecond = 12f;
         public bool useImpactGuardCost = true;
         [Min(0f)] public float guardHoldStaminaPerSecond = 2f;
@@ -72,7 +73,8 @@ namespace FengChenInn
             motion = CombatMotion.Skill, damage = 26, duration = 1.2f,
             activeStart = .35f, activeEnd = .62f, range = 2f, knockback = .27f, stagger = .32f
         };
-        [Min(0f)] public float skillCooldown = 6f;
+        // Legacy serialized field; existing scenes may retain a value, but F has no cooldown.
+        [HideInInspector] public float skillCooldown;
         [Min(0f)] public float skillTravelDistance = 2.4f;
         [Range(0f, 1f)] public float skillTravelStart = .05f;
         [Range(0f, 1f)] public float skillTravelEnd = .38f;
@@ -115,7 +117,7 @@ namespace FengChenInn
         public float Stamina { get; private set; }
         public float MaxStamina => maxStamina;
         public float Stamina01 => Stamina / Mathf.Max(1f, maxStamina);
-        public float SkillCooldownRemaining => Mathf.Max(0f, skillReadyAt - Time.time);
+        public float SkillCooldownRemaining => 0f;
         public float HitRecoil => Mathf.Max(impact.Strength, actor != null && actor.IsStunned ? 1f : 0f);
         public bool CanAnimateJump => IsMotionAvailable(CombatMotion.JumpStart)
             && IsMotionAvailable(CombatMotion.JumpLoop) && IsMotionAvailable(CombatMotion.JumpLand);
@@ -147,7 +149,7 @@ namespace FengChenInn
         private Vector3 spawnPosition, planarVelocity, dodgeDirection, skillDirection;
         private Quaternion spawnRotation;
         private float verticalVelocity, actionTime, lastGroundedAt = -10f, jumpedAt = -10f;
-        private float landingUntil, lastStaminaUseAt = -10f, skillReadyAt;
+        private float landingUntil, lastStaminaUseAt = -10f;
         private bool wasGrounded, wasGuarding, guardExhausted, groundedFromMovement;
         private BufferedAction queuedAction;
         private float queuedUntil;
@@ -333,7 +335,7 @@ namespace FengChenInn
                     : IsMotionAvailable(MotionFor(requested))
                         && (requested == BufferedAction.Dodge || requestedAttack != null && actor.HasWeapon)
                         && (requested != BufferedAction.Dodge || Stamina >= dodgeStaminaCost)
-                        && (requested != BufferedAction.Skill || Time.time >= skillReadyAt)))
+                        && (requested != BufferedAction.Skill || Stamina >= skillStaminaCost)))
                 ExitAttackRecovery();
             if (MovementLocked || State != ActionState.Ready || Time.time < landingUntil) return false;
             if (requested == BufferedAction.Jump)
@@ -369,7 +371,7 @@ namespace FengChenInn
                 ActionPerformed?.Invoke(motion);
                 return true;
             }
-            if (requested == BufferedAction.Skill && Time.time < skillReadyAt) return false;
+            if (requested == BufferedAction.Skill && Stamina < skillStaminaCost) return false;
             CombatAttack attack = requested == BufferedAction.Heavy ? heavyAttack
                 : requested == BufferedAction.Skill ? skillAttack : lightAttack;
             if (attack == null) return false;
@@ -378,6 +380,9 @@ namespace FengChenInn
                 attack.duration = animationDriver.MotionLength(motion, attack.duration) / Mathf.Max(.05f, attack.speed);
             RefreshTarget(attack.range);
             if (!actor.TryAttack(attack)) return false;
+            // Failed requests and buffered inputs cost nothing. Pay exactly once
+            // only after the actual skill starts, using the shared recovery delay.
+            if (requested == BufferedAction.Skill) SpendStamina(skillStaminaCost);
             attackTarget = selectedTarget;
             attackIntent = CameraMovement();
             if (attackIntent.sqrMagnitude < .01f) attackIntent = transform.forward;
@@ -391,7 +396,6 @@ namespace FengChenInn
             else if (requested == BufferedAction.Skill)
             {
                 SkillCount++;
-                skillReadyAt = Time.time + skillCooldown;
                 skillDirection = transform.forward;
             }
             else LightAttackCount++;
@@ -616,7 +620,6 @@ namespace FengChenInn
             PlaceForStory(spawnPosition, spawnRotation);
             Stamina = maxStamina;
             lastStaminaUseAt = -10f;
-            skillReadyAt = 0f;
             guardExhausted = false;
             LightAttackCount = HeavyAttackCount = JumpCount = DodgeCount = SkillCount = GuardCount = 0;
         }

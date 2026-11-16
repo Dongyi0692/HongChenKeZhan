@@ -208,6 +208,33 @@ public static class CombatPolishRules
             player.Animation.SampleMotionPose(CombatMotion.Heavy, clip.length);
             typeof(CombatActor).GetMethod("LateUpdate", Hidden).Invoke(player, null);
             Check(!player.IsAttacking, "An overlong configured duration still releases at the actual clip end");
+
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            fighter.skillCooldown = 6f; // Old scene data must no longer impose a cooldown.
+            float skillCost = fighter.skillStaminaCost;
+            Check(fighter.Skill() && player.IsAttacking, "Funded ground skill starts through the normal request path");
+            Check(Mathf.Approximately(fighter.Stamina, 100f-skillCost) && fighter.SkillCooldownRemaining == 0f,
+                "Skill pays its stamina once and ignores the legacy serialized cooldown");
+            float paid = fighter.Stamina;
+            Check(!fighter.Skill() && Mathf.Approximately(fighter.Stamina, paid),
+                "A repeated request during the same skill does not spend more stamina");
+            Clock(player, player.LastHitTime + fighter.skillRecoveryDelay + .01f);
+            Check(fighter.Skill() && Mathf.Approximately(fighter.Stamina, 100f-2f*skillCost),
+                "A second funded skill can start in recovery without waiting six seconds");
+            Set(fighter, "Stamina", skillCost-1f);
+            Clock(player, player.LastHitTime + fighter.skillRecoveryDelay + .01f);
+            var previousSkill = player.CurrentAttack;
+            Check(!fighter.Skill() && player.CurrentAttack == previousSkill && Mathf.Approximately(fighter.Stamina, skillCost-1f),
+                "Insufficient stamina neither spends points nor cancels an existing recovery");
+            player.ResetActor(); fighter.ResetPose(); Ground(fighter);
+            Transform weapon = player.WeaponRoot; player.WeaponRoot = null;
+            Check(!fighter.Skill() && Mathf.Approximately(fighter.Stamina, 100f),
+                "A missing weapon rejects the skill without charging stamina");
+            player.WeaponRoot = weapon;
+            fighter.ClearInput();
+            Set(fighter, "groundedFromMovement", false); Set(fighter, "verticalVelocity", 1f);
+            Check(!fighter.Skill() && Mathf.Approximately(fighter.Stamina, 100f),
+                "Airborne skill rejection remains unchanged and does not charge stamina");
         }
         catch (Exception error) { result.failures.Add(error.GetBaseException().ToString()); }
         finally
