@@ -1,0 +1,178 @@
+{
+  "materials": [
+    {
+      "name": "Hongfu_Mat_00",
+      "source": "dbd79aa1_75f6_4290_a31b_b3053795a421",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.8999999761581421,
+      "doubleSided": false,
+      "baseColor": "Textures/Hongfu_Mat_00_baseColor.png"
+    },
+    {
+      "name": "Hongfu_Mat_01",
+      "source": "Designer_Logic_PBR.003",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": false,
+      "baseColor": "Textures/Hongfu_Mat_01_baseColor.png"
+    },
+    {
+      "name": "Hongfu_Mat_02",
+      "source": "Lash_dark_brown",
+      "color": [
+        0.03500000014901161,
+        0.01899999938905239,
+        0.013000000268220901,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.800000011920929,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_03",
+      "source": "Material.002",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "baseColor": "Textures/Hongfu_Mat_03_baseColor.png",
+      "normal": "Textures/Hongfu_Mat_03_normal.png"
+    },
+    {
+      "name": "Hongfu_Mat_04",
+      "source": "\u539f\u8d34\u56fe_\u4f4e\u53cd\u5149",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 1.0,
+      "doubleSided": false,
+      "baseColor": "Textures/Hongfu_Mat_04_baseColor.png"
+    },
+    {
+      "name": "Hongfu_Mat_05",
+      "source": "\u53d1\u5e26_AE4A4E",
+      "color": [
+        0.423267662525177,
+        0.06847816705703735,
+        0.07618538290262222,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_06",
+      "source": "\u53d1\u5e26_AE4A4E_\u5c0f\u7247",
+      "color": [
+        0.423267662525177,
+        0.06847816705703735,
+        0.07618538290262222,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_07",
+      "source": "\u6750\u8d28",
+      "color": [
+        0.672119140625,
+        0.66552734375,
+        0.712646484375,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_08",
+      "source": "\u6750\u8d28.001",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_09",
+      "source": "\u6750\u8d28.002",
+      "color": [
+        0.0102691650390625,
+        0.00765228271484375,
+        0.004932403564453125,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_10",
+      "source": "\u6750\u8d28.003",
+      "color": [
+        0.4873046875,
+        0.306396484375,
+        0.246337890625,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_11",
+      "source": "\u6750\u8d28.004",
+      "color": [
+        0.005634307861328125,
+        0.0026702880859375,
+        0.0017004013061523438,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    },
+    {
+      "name": "Hongfu_Mat_12",
+      "source": "\u6750\u8d28.005",
+      "color": [
+        0.0255279541015625,
+        0.019622802734375,
+        0.019683837890625,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "sourceFile": "Hongfu_SwordAttack.glb",
+  "sourceSha256": "735e742c5c4c0371669b551fd0748ae79d5b41d456ae7c555d121b32fa2d96d6",
+  "artifact": "Hongfu_Light_SwordAttack.fbx",
+  "artifactSha256": "6c65b5f2ac1eb0748882c48fea2a069d55c61bcf0b2ba8b5de2d8b4c8cf720cb",
+  "clipName": "Hongfu_Light_SwordAttack",
+  "duration": 1.5333333333333334,
+  "boneCount": 52,
+  "referenceBindMatrixError": 0.0,
+  "rootMotionModified": false,
+  "nativeRootTranslation": [
+    {
+      "node": "mixamorig:Hips",
+      "node_index": 51,
+      "first": [
+        0.04425331577658653,
+        0.9657865166664124,
+        -0.05094774067401886
+      ],
+      "last": [
+        0.04425324127078056,
+        0.9657864570617676,
+        1.9782460927963257
+      ],
+      "net_delta_m": [
+        -7.450580596923828e-08,
+        -5.960464477539063e-08,
+        2.0291938334703445
+      ],
+      "range_m": [
+        0.1390831358730793,
+        0.3610978126525879,
+        2.037426732480526
+      ]
+    }
+  ],
+  "usage": "PrepareHongfu/AddHongfuLight creates Unity-local root curves by sampling the raw clip in the normalized review model; binds root-locked clip to Light.",
+  "inPlaceArtifact": "Hongfu_Light_InPlace.fbx",
+  "inPlaceSha256": "53dc5ccae090eeb3a7638a10a06f84c1c16c2a6cdf5f82f2c92f07e15dbd2c3c",
+  "rootMotionTreatment": "Source X/Z moved to CharacterController curve, native Y stays in the pose. Raw source FBX retained."
+}

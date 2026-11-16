@@ -1,0 +1,215 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
+
+namespace FengChenInn
+{
+    // Every clip targets this visual's exported skeleton. CharacterController owns
+    // world movement; this graph only supplies the animated pose, never old IK.
+    [DefaultExecutionOrder(50)]
+    public sealed class AholoAnimationDriver : MonoBehaviour
+    {
+        public AholoMotionSet motionSet;
+        public Animator targetAnimator;
+        public bool Ready => graph.IsValid() && targetAnimator != null && motionSet != null;
+        public CombatMotion CurrentMotion { get; private set; } = CombatMotion.Idle;
+        public float NormalizedTime
+        {
+            get
+            {
+                if (!Ready || currentSlot < 0 || !clips[currentSlot].IsValid()) return 0f;
+                float duration = MotionLength(CurrentMotion);
+                float time = (float)clips[currentSlot].GetTime() / Mathf.Max(.001f, duration);
+                return IsLoop(CurrentMotion) ? Mathf.Repeat(time, 1f) : Mathf.Clamp01(time);
+            }
+        }
+
+        private const int SlotCount = 4;
+        private PlayableGraph graph;
+        private AnimationMixerPlayable mixer;
+        private readonly AnimationClipPlayable[] clips = new AnimationClipPlayable[SlotCount];
+        private readonly float[] fromWeights = new float[SlotCount];
+        private readonly HashSet<CombatMotion> missingReported = new HashSet<CombatMotion>();
+        private int currentSlot = -1;
+        private float fadeClock, fadeDuration;
+        private bool bindingReported, guardReleasing;
+        public bool IsGuardReleasing => Ready && CurrentMotion == CombatMotion.Guard && guardReleasing && NormalizedTime < .999f;
+
+        private void Awake() => BuildGraph();
+        private void OnEnable() { if (!graph.IsValid()) BuildGraph(); }
+        private void OnDisable() => ReleaseGraph();
+        private void OnDestroy() => ReleaseGraph();
+
+        public void Configure(AholoMotionSet motions, Animator animator = null)
+        {
+            ReleaseGraph();
+            motionSet = motions;
+            targetAnimator = animator != null ? animator : GetComponentInChildren<Animator>(true);
+            missingReported.Clear();
+            bindingReported = false;
+            BuildGraph();
+        }
+
+        private void BuildGraph()
+        {
+            if (graph.IsValid()) return;
+            if (targetAnimator == null) targetAnimator = GetComponentInChildren<Animator>(true);
+            if (targetAnimator == null || motionSet == null) return;
+            targetAnimator.enabled = true;
+            targetAnimator.applyRootMotion = false;
+            targetAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            graph = PlayableGraph.Create(name + " Aholo Animation");
+            graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+            mixer = AnimationMixerPlayable.Create(graph, SlotCount, true);
+            AnimationPlayableOutput.Create(graph, "Aholo pose", targetAnimator).SetSourcePlayable(mixer);
+            graph.Play();
+            Play(CombatMotion.ExplorationIdle, 0f);
+        }
+
+        public bool HasMotion(CombatMotion motion) => motionSet != null && motionSet.GetClip(motion) != null;
+
+        public float MotionLength(CombatMotion motion, float fallback = 1f)
+        {
+            AnimationClip clip = motionSet != null ? motionSet.GetClip(motion) : null;
+            return clip != null ? Mathf.Max(.001f, clip.length) : fallback;
+        }
+
+        public void Play(CombatMotion motion, float fade = .12f, float speed = 1f)
+            => PlayInternal(motion, fade, speed, false);
+
+        // Attack and damage events must start a fresh clip even when a previous
+        // instance of that same motion was interrupted before its final frame.
+        public void Restart(CombatMotion motion, float fade = .12f, float speed = 1f)
+            => PlayInternal(motion, fade, speed, true);
+
+        public bool ReleaseGuard(float speed = 1f)
+        {
+            if (!Ready || currentSlot < 0 || CurrentMotion != CombatMotion.Guard
+                || !HasMotion(CombatMotion.Guard) || !clips[currentSlot].IsValid() || NormalizedTime >= .999f)
+                return false;
+            guardReleasing = true;
+            clips[currentSlot].SetSpeed(Mathf.Max(.01f, speed));
+            return true;
+        }
+
+        private void PlayInternal(CombatMotion motion, float fade, float speed, bool restart)
+        {
+            if (!Ready)
+            {
+                if (!bindingReported)
+                {
+                    Debug.LogWarning(name + ": Aholo animator or motion set is not bound; animation is unavailable.", this);
+                    bindingReported = true;
+                }
+                return;
+            }
+            AnimationClip clip = motionSet.GetClip(motion);
+            if (clip == null)
+            {
+                if (missingReported.Add(motion))
+                    Debug.LogWarning(name + ": Missing Aholo clip " + motion + "; no procedural replacement is used.", this);
+                return;
+            }
+            bool reenterGuard = motion == CombatMotion.Guard && guardReleasing;
+            if (!restart && !reenterGuard && currentSlot >= 0 && CurrentMotion == motion && clips[currentSlot].IsValid()
+                && (IsLoop(motion) || motion == CombatMotion.Guard || NormalizedTime < .999f))
+            {
+                if (motion != CombatMotion.Guard || NormalizedTime < motionSet.guardHoldNormalized)
+                    clips[currentSlot].SetSpeed(Mathf.Max(.01f, speed));
+                return;
+            }
+
+            int next = -1;
+            float lowestWeight = float.MaxValue;
+            for (int i = 0; i < SlotCount; i++)
+            {
+                fromWeights[i] = mixer.GetInputWeight(i);
+                if (i != currentSlot && (!clips[i].IsValid() || fromWeights[i] < lowestWeight))
+                {
+                    next = i;
+                    lowestWeight = clips[i].IsValid() ? fromWeights[i] : -1f;
+                }
+            }
+            if (next < 0) next = 0;
+            if (clips[next].IsValid())
+            {
+                mixer.DisconnectInput(next);
+                graph.DestroyPlayable(clips[next]);
+            }
+            clips[next] = AnimationClipPlayable.Create(graph, clip);
+            clips[next].SetApplyFootIK(false);
+            clips[next].SetApplyPlayableIK(false);
+            clips[next].SetTime(0d);
+            clips[next].SetSpeed(Mathf.Max(.01f, speed));
+            graph.Connect(clips[next], 0, mixer, next);
+            fromWeights[next] = 0f;
+            currentSlot = next;
+            CurrentMotion = motion;
+            guardReleasing = false;
+            fadeClock = 0f;
+            fadeDuration = Mathf.Max(0f, fade);
+            if (fadeDuration <= 0f) ApplyWeights(1f);
+        }
+
+        public void SetLocomotion(float speed, bool battle)
+        {
+            if (!Ready) return;
+            // Stun and animation recovery are separate: at rest let the real
+            // reaction finish, while movement/actions may cancel after stun.
+            if (speed < .08f && (CurrentMotion == CombatMotion.Hit || CurrentMotion == CombatMotion.Knockback)
+                && NormalizedTime < .999f) return;
+            float threshold = motionSet.runTransitionSpeed;
+            if (CurrentMotion == CombatMotion.Run) threshold -= .25f;
+            CombatMotion motion = speed < .08f ? (battle ? CombatMotion.Idle : CombatMotion.ExplorationIdle)
+                : speed >= threshold ? CombatMotion.Run : CombatMotion.Walk;
+            float reference = motion == CombatMotion.Run ? motionSet.runReferenceSpeed : motionSet.walkReferenceSpeed;
+            float rate = motion == CombatMotion.Idle || motion == CombatMotion.ExplorationIdle ? 1f
+                : Mathf.Clamp(speed / Mathf.Max(.1f, reference), .35f, 1.5f);
+            Play(motion, motionSet.locomotionFade, rate);
+        }
+
+        private void LateUpdate()
+        {
+            if (!Ready || currentSlot < 0) return;
+            if (fadeDuration > 0f && fadeClock < fadeDuration)
+            {
+                fadeClock = Mathf.Min(fadeDuration, fadeClock + Time.deltaTime);
+                ApplyWeights(Mathf.SmoothStep(0f, 1f, fadeClock / fadeDuration));
+            }
+            AnimationClipPlayable current = clips[currentSlot];
+            if (!current.IsValid()) return;
+            float length = MotionLength(CurrentMotion);
+            if (IsLoop(CurrentMotion))
+            {
+                if (current.GetTime() >= length) current.SetTime(current.GetTime() % length);
+            }
+            else
+            {
+                double end = CurrentMotion == CombatMotion.Guard && !guardReleasing ? length * motionSet.guardHoldNormalized : length;
+                if (current.GetTime() >= end)
+                {
+                    current.SetTime(end);
+                    current.SetSpeed(0d);
+                }
+            }
+        }
+
+        private void ApplyWeights(float blend)
+        {
+            for (int i = 0; i < SlotCount; i++)
+                mixer.SetInputWeight(i, Mathf.Lerp(fromWeights[i], i == currentSlot ? 1f : 0f, blend));
+        }
+
+        private static bool IsLoop(CombatMotion motion) => motion == CombatMotion.Idle || motion == CombatMotion.ExplorationIdle
+            || motion == CombatMotion.Walk || motion == CombatMotion.Run || motion == CombatMotion.JumpLoop;
+
+        private void ReleaseGraph()
+        {
+            if (graph.IsValid()) graph.Destroy();
+            currentSlot = -1;
+            guardReleasing = false;
+            for (int i = 0; i < SlotCount; i++) { clips[i] = default; fromWeights[i] = 0f; }
+        }
+    }
+}

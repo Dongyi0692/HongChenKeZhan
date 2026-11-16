@@ -1,0 +1,382 @@
+{
+  "sourceFile": "Hongfu_WalkA.glb",
+  "sourceSha256": "6cf887ed0319f6aa3f2efdb39777a2015f303365fc341ebe8fcb805c048ed4b7",
+  "baseModel": "Hongfu_Base_Walk.fbx",
+  "walkAnimation": "Hongfu_Walk_InPlace.fbx",
+  "clipName": "Hongfu_Walk_InPlace",
+  "clipDuration": 1.3333333730697632,
+  "sourceTravelMeters": 1.7580415178090334,
+  "walkReferenceSpeed": 1.3185310990816004,
+  "boneCount": 52,
+  "meshCount": 18,
+  "triangleCount": 1314423,
+  "sourceHeightMeters": 2.0102314949035645,
+  "materials": [
+    {
+      "name": "Hongfu_Mat_00",
+      "sourceName": "dbd79aa1_75f6_4290_a31b_b3053795a421",
+      "sourceIndex": 5,
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "baseColorTexture": "Textures/Hongfu_WalkA_Image_04.jpg",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.9,
+      "doubleSided": false,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_01",
+      "sourceName": "Designer_Logic_PBR.003",
+      "sourceIndex": 8,
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "baseColorTexture": "Textures/Hongfu_WalkA_Image_05.png",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "Textures/Hongfu_Mat_01_MetallicGloss.png",
+      "metallic": 1.0,
+      "roughness": 1.0,
+      "doubleSided": false,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_02",
+      "sourceName": "Lash_dark_brown",
+      "sourceIndex": 3,
+      "color": [
+        0.035,
+        0.019,
+        0.013,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.8,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_03",
+      "sourceName": "Material.002",
+      "sourceIndex": 4,
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "baseColorTexture": "Textures/Hongfu_WalkA_Image_02.png",
+      "normalTexture": "Textures/Hongfu_WalkA_Image_01.png",
+      "normalScale": 1,
+      "metallicGlossTexture": "Textures/Hongfu_Mat_03_MetallicGloss.png",
+      "metallic": 1.0,
+      "roughness": 1.0,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_04",
+      "sourceName": "原贴图_低反光",
+      "sourceIndex": 0,
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "baseColorTexture": "Textures/Hongfu_WalkA_Image_00.png",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 1.0,
+      "doubleSided": false,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_05",
+      "sourceName": "发带_AE4A4E",
+      "sourceIndex": 2,
+      "color": [
+        0.42326766,
+        0.06847817,
+        0.07618538,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_06",
+      "sourceName": "发带_AE4A4E_小片",
+      "sourceIndex": 1,
+      "color": [
+        0.42326766,
+        0.06847817,
+        0.07618538,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_07",
+      "sourceName": "材质",
+      "sourceIndex": 6,
+      "color": [
+        0.67211914,
+        0.66552734,
+        0.7126465,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_08",
+      "sourceName": "材质.001",
+      "sourceIndex": 11,
+      "color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_09",
+      "sourceName": "材质.002",
+      "sourceIndex": 9,
+      "color": [
+        0.010269165,
+        0.0076522827,
+        0.0049324036,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_10",
+      "sourceName": "材质.003",
+      "sourceIndex": 7,
+      "color": [
+        0.4873047,
+        0.30639648,
+        0.24633789,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_11",
+      "sourceName": "材质.004",
+      "sourceIndex": 10,
+      "color": [
+        0.005634308,
+        0.002670288,
+        0.0017004013,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "Hongfu_Mat_12",
+      "sourceName": "材质.005",
+      "sourceIndex": 12,
+      "color": [
+        0.025527954,
+        0.019622803,
+        0.019683838,
+        1.0
+      ],
+      "baseColorTexture": "",
+      "normalTexture": "",
+      "normalScale": 1,
+      "metallicGlossTexture": "",
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "doubleSided": true,
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5
+    }
+  ],
+  "textures": [
+    {
+      "file": "Textures/Hongfu_WalkA_Image_00.png",
+      "width": 2048,
+      "height": 2048,
+      "sha256": "f7915b99511ac33b3bb9b5b589dc46b5c22436adb5a2717009d2a696af5c4e6c"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_01.png",
+      "width": 4096,
+      "height": 4096,
+      "sha256": "40b7b7766032ce3d512aa657b8329ddf4a323fb93e9fd887d328771887d719f8"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_02.png",
+      "width": 4096,
+      "height": 4096,
+      "sha256": "a813f4f01a36134b5d4dba79fc029ae324b9225724bbe8241ff3cca80d19664d"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_03.png",
+      "width": 4096,
+      "height": 4096,
+      "sha256": "2748add3caaae8b5979518119d254d8ce3a243f5014a6bd2b8b462d3bd30cf69"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_04.jpg",
+      "width": 4096,
+      "height": 4096,
+      "sha256": "4eb39caf2580a98f8050914114751f19faf1db1bd8b5a3cb3a2e2189e89553e9"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_05.png",
+      "width": 2048,
+      "height": 2048,
+      "sha256": "080bd09650b2266ad854b098efc7bfd429a111ed6e5545ebcad7a9bfee37256e"
+    },
+    {
+      "file": "Textures/Hongfu_WalkA_Image_06.png",
+      "width": 2048,
+      "height": 2048,
+      "sha256": "d35d1b6b07bdad6d2ba16167c7d23a4881eeae07fda609ad69bbd790d11e81e2"
+    },
+    {
+      "file": "Textures/Hongfu_Mat_01_MetallicGloss.png",
+      "width": 2048,
+      "height": 2048,
+      "sha256": "91111ce72c974f627e0241902be0e92929f497d6635dec78cb9a46083ad2c11c",
+      "derived_from": "Textures/Hongfu_WalkA_Image_06.png",
+      "channel_conversion": "R=source.B*metallicFactor; A=1-source.G*roughnessFactor; G=B=0"
+    },
+    {
+      "file": "Textures/Hongfu_Mat_03_MetallicGloss.png",
+      "width": 4096,
+      "height": 4096,
+      "sha256": "3fd4f7cb7e0f9bab4e874bf35620d1f1579795d1cb36518588a2530ff39ea0f6",
+      "derived_from": "Textures/Hongfu_WalkA_Image_03.png",
+      "channel_conversion": "R=source.B*metallicFactor; A=1-source.G*roughnessFactor; G=B=0"
+    }
+  ],
+  "files": [
+    {
+      "file": "Hongfu_Base_Walk.fbx",
+      "sha256": "0b2b5c8f6f6a1e9fe58f2e010a890865ad045031faf6a454d35a36c74e890c1f",
+      "bytes": 58141948
+    },
+    {
+      "file": "Hongfu_Walk_InPlace.fbx",
+      "sha256": "4522d8d154ac71ecadf8201a20c326ce06c64df753e5884ac9785f88e7821a19",
+      "bytes": 475180
+    }
+  ],
+  "missingMotions": [
+    "Idle",
+    "Run",
+    "Light",
+    "Heavy",
+    "Skill",
+    "Guard",
+    "JumpStart",
+    "JumpLoop",
+    "JumpLand",
+    "Dodge",
+    "Hit",
+    "Knockback",
+    "Death"
+  ],
+  "rootMotionTreatment": "Separate walk clip removes only net horizontal root-bone travel; original base and source remain unchanged.",
+  "posedFirstFrameHeightMeters": 1.9793281126767397,
+  "sourceBindBoundsGlTF": {
+    "min": [
+      -0.3216165602207184,
+      0.0,
+      -0.2291606217622757
+    ],
+    "max": [
+      0.3216165602207184,
+      2.0102314949035645,
+      0.23519247770309448
+    ],
+    "size": [
+      0.6432331204414368,
+      2.0102314949035645,
+      0.4643530994653702
+    ]
+  }
+}

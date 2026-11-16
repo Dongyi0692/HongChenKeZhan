@@ -1,0 +1,333 @@
+{
+  "status": "Ready for authorized installation; source-backed weapon bindings and real clip windows. User will inspect gameplay.",
+  "player": {
+    "visualPrefabPath": "Assets/_Game/Art/Aholo20261116/Runtime/Hongfu_Visual.prefab",
+    "motionSetPath": "Assets/_Game/Art/Aholo20261116/Runtime/Hongfu_Motions.asset",
+    "swordAssetPath": "Assets/_Game/Art/Characters/Hongfu/HongfuSword.fbx",
+    "weaponCalibrationMode": "Markers",
+    "weapon": {
+      "useNamedMarkers": true,
+      "sourceMeshName": "",
+      "sourceGrip": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "sourceBladeBase": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "sourceBladeTip": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "sourceBroadPoint": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "uniformSwordScale": 1.0,
+      "gripFraction": 0.6499999761581421,
+      "socketPositionOffsetMeters": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "socketEulerOffset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "bladeRadius": 0.03500000014901161
+    },
+    "maxHealth": 100,
+    "controllerHeight": 1.8,
+    "controllerRadius": 0.36,
+    "attacks": [
+      {
+        "label": "剑术轻击",
+        "motion": 3,
+        "damage": 18,
+        "duration": 1.5333333333333334,
+        "speed": 1.0,
+        "activeStart": 0.3,
+        "activeEnd": 0.5333333333333333,
+        "range": 2.0,
+        "knockback": 0.14,
+        "stagger": 0.22,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.3,
+            "end": 0.5333333333333333,
+            "damageMultiplier": 1.0
+          }
+        ]
+      },
+      {
+        "label": "完整四式重击",
+        "motion": 4,
+        "damage": 64,
+        "duration": 4.333333333333333,
+        "speed": 1.0,
+        "activeStart": 0.36666666666666664,
+        "activeEnd": 2.7,
+        "range": 2.0,
+        "knockback": 0.35,
+        "stagger": 0.42,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.3666667,
+            "end": 0.5666667,
+            "damageMultiplier": 0.25
+          },
+          {
+            "start": 1.0333333,
+            "end": 1.2333333,
+            "damageMultiplier": 0.25
+          },
+          {
+            "start": 1.7333333,
+            "end": 1.9333333,
+            "damageMultiplier": 0.25
+          },
+          {
+            "start": 2.5666667,
+            "end": 2.7,
+            "damageMultiplier": 0.25
+          }
+        ]
+      },
+      {
+        "label": "突进剑技",
+        "motion": 5,
+        "damage": 26,
+        "duration": 1.5666666666666667,
+        "speed": 1.0,
+        "activeStart": 0.2,
+        "activeEnd": 0.43333333333333335,
+        "range": 2.0,
+        "knockback": 0.27,
+        "stagger": 0.32,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.2,
+            "end": 0.43333333333333335,
+            "damageMultiplier": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  "elite": {
+    "visualPrefabPath": "Assets/_Game/Art/Aholo20261116/Runtime/Elite_Visual.prefab",
+    "motionSetPath": "Assets/_Game/Art/Aholo20261116/Runtime/Elite_Motions.asset",
+    "swordAssetPath": "Assets/_Game/Art/Characters/Ronin/RoninSword.fbx",
+    "weaponCalibrationMode": "Explicit",
+    "weapon": {
+      "useNamedMarkers": false,
+      "sourceMeshName": "RoninSword",
+      "sourceGrip": {
+        "x": 3.820352867478505e-05,
+        "y": -0.00025000018649734557,
+        "z": -9.413405496161431e-05
+      },
+      "sourceBladeBase": {
+        "x": -1.3877797755412757e-05,
+        "y": -0.0014500004472211003,
+        "z": -7.428343815263361e-05
+      },
+      "sourceBladeTip": {
+        "x": -0.0002461170661263168,
+        "y": -0.006053298711776733,
+        "z": 0.00018584556528367102
+      },
+      "sourceBroadPoint": {
+        "x": 3.820352867478505e-05,
+        "y": -0.00025000018649734557,
+        "z": 0.09990587085485458
+      },
+      "uniformSwordScale": 1.0,
+      "gripFraction": 0.6499999761581421,
+      "socketPositionOffsetMeters": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "socketEulerOffset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "bladeRadius": 0.026000000536441803
+    },
+    "maxHealth": 180,
+    "controllerHeight": 1.8,
+    "controllerRadius": 0.36,
+    "attacks": [
+      {
+        "label": "横砍",
+        "motion": 3,
+        "damage": 17,
+        "duration": 0.5333333333333333,
+        "speed": 1.0,
+        "activeStart": 0.13,
+        "activeEnd": 0.3,
+        "range": 2.0,
+        "knockback": 0.14,
+        "stagger": 0.24,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.13,
+            "end": 0.3,
+            "damageMultiplier": 1.0
+          }
+        ]
+      },
+      {
+        "label": "斜劈",
+        "motion": 4,
+        "damage": 24,
+        "duration": 1.5333333333333334,
+        "speed": 1.0,
+        "activeStart": 0.3,
+        "activeEnd": 0.5333333333333333,
+        "range": 2.0,
+        "knockback": 0.28,
+        "stagger": 0.24,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.3,
+            "end": 0.5333333333333333,
+            "damageMultiplier": 1.0
+          }
+        ]
+      },
+      {
+        "label": "突进剑技",
+        "motion": 5,
+        "damage": 28,
+        "duration": 1.5666666666666667,
+        "speed": 1.0,
+        "activeStart": 0.2,
+        "activeEnd": 0.43333333333333335,
+        "range": 2.0,
+        "knockback": 0.28,
+        "stagger": 0.24,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.2,
+            "end": 0.43333333333333335,
+            "damageMultiplier": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  "grunt": {
+    "visualPrefabPath": "Assets/_Game/Art/Aholo20261116/Runtime/Grunt_Visual.prefab",
+    "motionSetPath": "Assets/_Game/Art/Aholo20261116/Runtime/Grunt_Motions.asset",
+    "swordAssetPath": "Assets/_Game/Art/Characters/Ronin/RoninSword.fbx",
+    "weaponCalibrationMode": "Explicit",
+    "weapon": {
+      "useNamedMarkers": false,
+      "sourceMeshName": "RoninSword",
+      "sourceGrip": {
+        "x": 3.820352867478505e-05,
+        "y": -0.00025000018649734557,
+        "z": -9.413405496161431e-05
+      },
+      "sourceBladeBase": {
+        "x": -1.3877797755412757e-05,
+        "y": -0.0014500004472211003,
+        "z": -7.428343815263361e-05
+      },
+      "sourceBladeTip": {
+        "x": -0.0002461170661263168,
+        "y": -0.006053298711776733,
+        "z": 0.00018584556528367102
+      },
+      "sourceBroadPoint": {
+        "x": 3.820352867478505e-05,
+        "y": -0.00025000018649734557,
+        "z": 0.09990587085485458
+      },
+      "uniformSwordScale": 1.0,
+      "gripFraction": 0.6499999761581421,
+      "socketPositionOffsetMeters": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "socketEulerOffset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "bladeRadius": 0.026000000536441803
+    },
+    "maxHealth": 55,
+    "controllerHeight": 1.8,
+    "controllerRadius": 0.36,
+    "attacks": [
+      {
+        "label": "横砍",
+        "motion": 3,
+        "damage": 10,
+        "duration": 0.5333333333333333,
+        "speed": 1.0,
+        "activeStart": 0.13,
+        "activeEnd": 0.3,
+        "range": 2.0,
+        "knockback": 0.14,
+        "stagger": 0.24,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.13,
+            "end": 0.3,
+            "damageMultiplier": 1.0
+          }
+        ]
+      },
+      {
+        "label": "斜劈",
+        "motion": 4,
+        "damage": 13,
+        "duration": 1.5333333333333334,
+        "speed": 1.0,
+        "activeStart": 0.3,
+        "activeEnd": 0.5333333333333333,
+        "range": 2.0,
+        "knockback": 0.28,
+        "stagger": 0.24,
+        "unblockable": false,
+        "hitWindows": [
+          {
+            "start": 0.3,
+            "end": 0.5333333333333333,
+            "damageMultiplier": 1.0
+          }
+        ]
+      }
+    ]
+  },
+  "rescueEnemyCount": 2,
+  "eliteAllyRestoreFraction": 0.5,
+  "weaponBindingNote": "Hongfu uses source GripCenter/BladeBase/BladeTip/BladeBroadAxis markers. Elite and Grunt use explicit RoninSword mesh-local measured grip/blade landmarks; imported FBX units are preserved. Both preserve native sword dimensions, gripFraction=0.65, zero position and Euler offsets from the anatomical hand basis. No extra roll offset is inferred from inconclusive static preview images. No IK or animation bone edits. Static hand attachment is implementation data, not visual acceptance; no further automated preview/test is requested.",
+  "balanceNote": "Initial balance: player18/64-total/26; elite17/24/28; grunt10/13. Four heavy windows each deal16 over the full4.333s clip. Higher heavy commitment is accounted for without trimming animation. Values remain adjustable, not gameplay-balanced acceptance.",
+  "timingEvidence": [
+    "SwordAttack.combat_analysis.json",
+    "Grunt_SwordB.combat_analysis.json",
+    "Grunt_HeavyCombo.combat_analysis.json",
+    "Grunt_SwordDash.combat_analysis.json"
+  ],
+  "validationNote": "Real-source frame/hand-trajectory windows are adjustable initial timing. Preserve full recovery and apply root motion once. User will assess blade contact and appearance; automated acceptance stopped at user request."
+}

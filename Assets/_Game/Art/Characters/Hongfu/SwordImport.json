@@ -1,0 +1,57 @@
+{
+  "materials": [
+    {
+      "name": "HongfuSwordMaterial",
+      "originalName": "Designer_Logic_PBR.004",
+      "baseColorFactor": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metallic": 1,
+      "roughness": 1,
+      "doubleSided": false,
+      "baseColorTexture": "HongfuSwordTex_00.png",
+      "metallicRoughnessTexture": "HongfuSwordTex_01.png",
+      "unityMetallicGlossTexture": "HongfuSword_MetallicGloss.png"
+    }
+  ],
+  "measurements": {
+    "totalLength": 0.9,
+    "gripCenterAtWeaponLocalZ": 0.09,
+    "bladeStartFromGrip": 0.17,
+    "bladeTipFromGrip": 0.78,
+    "collisionRadiusRecommended": 0.035,
+    "bladeBroadDirection": "Unity +X after marker alignment",
+    "bladeDirection": "Unity +Z after marker alignment"
+  },
+  "markers": {
+    "GripCenter": [
+      0,
+      -0.09,
+      0
+    ],
+    "BladeBase": [
+      0,
+      -0.26,
+      0
+    ],
+    "BladeTip": [
+      0,
+      -0.87,
+      0
+    ],
+    "BladeBroadAxis": [
+      0.1,
+      -0.09,
+      0
+    ]
+  },
+  "unityAlignment": "Rotate model so BladeTip-GripCenter equals local +Z and BladeBroadAxis-GripCenter equals local +X; then translate whole model so GripCenter is (0,0,0.09). Use scale 1.",
+  "notes": [
+    "Source has no scabbard; preserve existing generated sheath.",
+    "Mesh 19756 triangles; source texture/color preserved.",
+    "Use marker collision calibration, not a fake Blade mesh."
+  ]
+}
