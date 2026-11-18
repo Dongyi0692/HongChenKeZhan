@@ -1,0 +1,11 @@
+{
+  "source": "D:\\\u4e0b\u8f7d\\669487__xkeril__rain-on-roofs.wav",
+  "sha256": "ccf637e58b37f844bd89502b8e04a3d63884db14a2559271248522aba87cc72d",
+  "source_seconds": 54.484541666666665,
+  "loop_seconds": 52.484541666666665,
+  "overlap_seconds": 2,
+  "gain": 5.351997367378325,
+  "loop_rms": 0.08288543358384474,
+  "boundary_step": 0.020915809833379224,
+  "ordinary_step_rms": 0.028037498757541128
+}

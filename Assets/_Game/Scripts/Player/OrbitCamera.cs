@@ -14,6 +14,9 @@ namespace FengChenInn
         [Min(.8f)] public float indoorDistanceLimit = 3f;
         [Min(.8f)] public float framingDistanceLimit = 3.2f;
         [Min(.05f)] public float transitionTime = .24f;
+        [Header("Dialogue framing")]
+        [Min(1f)] public float soloFrameDistance = 2.35f;
+        [Min(.5f)] public float soloFrameHeight = 1.38f;
         [Min(.1f)] public float distanceReturnSpeed = 3.2f;
         [Min(.05f)] public float minimumProbeRadius = .18f;
         [Min(0f)] public float wallPadding = .04f;
@@ -27,12 +30,28 @@ namespace FengChenInn
         private readonly RaycastHit[] castHits = new RaycastHit[96];
         private readonly Collider[] overlaps = new Collider[64];
         private static readonly float[] FallbackAngles = { -20f, 20f, -45f, 45f, -75f, 75f, -110f, 110f, 180f };
-        public bool IsFramingActors => frameA != null && frameB != null;
+        public bool IsFramingActors => frameA != null;
         public float CurrentDistance { get; private set; }
         public float ObstructionRadius { get; private set; }
         public bool ClearanceSatisfied { get; private set; }
 
         private void Awake() => view = GetComponent<Camera>();
+
+        // Solo dialogue: keep the current viewing axis and dolly to a medium shot, so the
+        // move never swings the camera through a wall or past the player's shoulder.
+        public void FrameActor(Transform a)
+        {
+            if (a == null) return;
+            if (frameA == a && frameB == null) return;
+            EnsureInitialized();
+            frameA = a; frameB = null;
+            Vector3 focus = RecoverFocus(SingleFocus(), true);
+            Vector3 direction = transform.position - focus;
+            direction.y = Mathf.Clamp(direction.y, -.1f, 1.1f);
+            if (direction.sqrMagnitude < .01f) direction = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
+            frameDirection = direction.normalized;
+            transitionRemaining = transitionTime;
+        }
 
         public void FrameActors(Transform a, Transform b, bool immediate = false)
         {
@@ -102,9 +121,14 @@ namespace FengChenInn
             ObstructionRadius = ProbeRadius();
         }
         private Vector3 FollowFocus() => target != null ? target.position + Vector3.up * 1.25f : transform.position + transform.forward;
-        private Vector3 FrameFocus() => (frameA.position + frameB.position) * .5f + Vector3.up * 1.22f;
+        private Vector3 SingleFocus() => frameA.position + Vector3.up * soloFrameHeight;
+        private Vector3 FrameFocus() => frameB != null
+            ? (frameA.position + frameB.position) * .5f + Vector3.up * 1.22f
+            : SingleFocus();
         private float FollowLimit() => Mathf.Max(.8f, Mathf.Min(distance, indoorDistanceLimit));
-        private float FrameDistance() => Mathf.Clamp(Vector3.Distance(frameA.position, frameB.position) * .75f + 1f, 1.8f, Mathf.Max(1.8f, framingDistanceLimit));
+        private float FrameDistance() => frameB == null
+            ? Mathf.Clamp(soloFrameDistance, 1.2f, Mathf.Max(1.2f, framingDistanceLimit))
+            : Mathf.Clamp(Vector3.Distance(frameA.position, frameB.position) * .75f + 1f, 1.8f, Mathf.Max(1.8f, framingDistanceLimit));
 
         private void ApplyFrame(float dt, bool immediate)
         {
@@ -160,10 +184,13 @@ namespace FengChenInn
             // people are correctly placed. Anchor on a visible participant instead.
             if (framing)
             {
-                Vector3 first = frameA.position + Vector3.up * 1.22f;
+                Vector3 first = frameA.position + Vector3.up * (frameB != null ? 1.22f : soloFrameHeight);
                 if (PointClear(first, .035f)) return first;
-                Vector3 second = frameB.position + Vector3.up * 1.22f;
-                if (PointClear(second, .035f)) return second;
+                if (frameB != null)
+                {
+                    Vector3 second = frameB.position + Vector3.up * 1.22f;
+                    if (PointClear(second, .035f)) return second;
+                }
             }
             foreach (Vector3 offset in new[] { Vector3.up * .35f, Vector3.up * .7f,
                 transform.right * .45f, -transform.right * .45f })

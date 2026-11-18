@@ -1,0 +1,32 @@
+[
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scripts\\Player\\PrototypeFighter.cs",
+    "SHA256": "1CAA1FB8380FA2B7C1965A7BCC2AEED81FB21F6D6710F6DAB06F1F02DBE9C435",
+    "Unchanged": true
+  },
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scripts\\Player\\PrototypeInput.cs",
+    "SHA256": "256E0541953709DB7CA60648CB749CF2CA65B528A6565A3AC447D9D0834A8580",
+    "Unchanged": true
+  },
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scripts\\Combat\\AholoAnimationDriver.cs",
+    "SHA256": "1871BF218176F343051665E6D55277A5F72F20C015A4B0B18E15A574B6D92279",
+    "Unchanged": true
+  },
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scripts\\Combat\\CombatActor.cs",
+    "SHA256": "2D10FD7C06CD787E1FAF3BF1C6868FD4176682E00C138BAB80E65ACDA722897C",
+    "Unchanged": true
+  },
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scenes\\InnDuel_Stage12_CollisionLighting.unity",
+    "SHA256": "A69105BC7E4622FDF55194A4ACA4D8364CF7A3718FE67F5860B428F31F90127A",
+    "Unchanged": true
+  },
+  {
+    "File": "D:\\下载\\客栈马原\\HongChenKeZhan-full\\Assets\\_Game\\Scripts\\Player\\MenuAudio.cs",
+    "SHA256": "A62928E854A848A27781367F4E205C7742DD7B8C108D11A6D04C0D2064A89F2F",
+    "Unchanged": true
+  }
+]

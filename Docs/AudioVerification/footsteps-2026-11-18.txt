@@ -1,0 +1,64 @@
+PASS: Automatic attachment on existing Stage12 player
+PASS: 8 wet and 8 wooden single steps imported
+PASS: WetGround_01 is short mono decompressed PCM
+PASS: WetGround_02 is short mono decompressed PCM
+PASS: WetGround_03 is short mono decompressed PCM
+PASS: WetGround_04 is short mono decompressed PCM
+PASS: WetGround_05 is short mono decompressed PCM
+PASS: WetGround_06 is short mono decompressed PCM
+PASS: WetGround_07 is short mono decompressed PCM
+PASS: WetGround_08 is short mono decompressed PCM
+PASS: WetGround_01 is short mono decompressed PCM
+PASS: WetGround_02 is short mono decompressed PCM
+PASS: WetGround_03 is short mono decompressed PCM
+PASS: WetGround_04 is short mono decompressed PCM
+PASS: WetGround_05 is short mono decompressed PCM
+PASS: WetGround_06 is short mono decompressed PCM
+PASS: WetGround_07 is short mono decompressed PCM
+PASS: WetGround_08 is short mono decompressed PCM
+PASS: WoodFloor_01 is short mono decompressed PCM
+PASS: WoodFloor_02 is short mono decompressed PCM
+PASS: WoodFloor_03 is short mono decompressed PCM
+PASS: WoodFloor_04 is short mono decompressed PCM
+PASS: WoodFloor_05 is short mono decompressed PCM
+PASS: WoodFloor_06 is short mono decompressed PCM
+PASS: WoodFloor_07 is short mono decompressed PCM
+PASS: WoodFloor_08 is short mono decompressed PCM
+PASS: Independent 3D one-shot voices; no recording loop
+PASS: Main menu/pause produces no footsteps
+ STEP t=1.346 surface=WetGround clip=WetGround_01 speed=2.10 phase=0.491 position=(-2.07, -0.07, -20.00)
+ STEP t=2.301 surface=WetGround clip=WetGround_08 speed=2.10 phase=0.993 position=(-0.07, 0.01, -20.00)
+ STEP t=4.221 surface=WetGround clip=WetGround_02 speed=2.10 phase=0.491 position=(3.96, -0.07, -20.00)
+Slow diagnostic: dt=4.00550189614296 scale=1 position=(4.36, -0.18, -20.00) input=(0.41, -0.29) speed=2.100006 grounded=True state=Ready motion=Run enabled=True driver=True ground=EnvGround_South (UnityEngine.BoxCollider)
+PASS: Slow movement uses wet footsteps on outdoor ground
+PASS: Existing locomotion clips have no events: calibrated distance fallback active
+PASS: Stopping clears accumulated steps and fades existing tails
+ STEP t=5.957 surface=WetGround clip=WetGround_01 speed=4.20 phase=0.494 position=(-3.53, -0.19, -20.00)
+ STEP t=6.566 surface=WetGround clip=WetGround_02 speed=4.20 phase=0.991 position=(-0.98, 0.06, -20.00)
+ STEP t=8.136 surface=WetGround clip=WetGround_03 speed=4.20 phase=0.490 position=(5.62, -0.06, -20.00)
+PASS: Running cadence exceeds walking including existing landing transitions: 0.75 / 0.94 steps/s
+PASS: Multiple clips and slight pitch variation
+PASS: Pause immediately prevents new footsteps and silences tails
+ STEP t=9.403 surface=WetGround clip=WetGround_02 speed=4.20 phase=0.490 position=(10.94, 0.04, -20.00)
+PASS: Resume restarts cadence without a burst of queued steps
+PASS: Existing controller accepts jump without changing parameters
+PASS: Player is airborne during jump
+PASS: Airborne movement does not produce footsteps
+ STEP t=15.165 surface=WetGround clip=WetGround_05 speed=2.10 phase=0.493 position=(0.00, 0.18, -5.89)
+ STEP t=16.118 surface=WoodFloor clip=WoodFloor_05 speed=2.10 phase=0.993 position=(0.00, 0.23, -3.89)
+ STEP t=17.066 surface=WoodFloor clip=WoodFloor_01 speed=2.10 phase=0.487 position=(0.00, 0.23, -1.90)
+PASS: Actual movement crosses exterior porch into indoor wooden floor
+PASS: Indoor floor selects wooden steps from actual collider
+ STEP t=18.419 surface=WoodFloor clip=WoodFloor_05 speed=2.10 phase=0.492 position=(0.00, 0.23, -3.38)
+ STEP t=19.367 surface=WetGround clip=WetGround_02 speed=2.10 phase=0.990 position=(0.00, 0.21, -5.38)
+PASS: Walking back outside switches to wet ground
+ STEP t=22.521 surface=WoodFloor clip=WoodFloor_06 speed=2.10 phase=0.490 position=(4.70, 1.46, -0.90)
+PASS: Existing smooth stair collider uses wood footsteps
+ STEP t=24.727 surface=WoodFloor clip=WoodFloor_02 speed=2.10 phase=0.491 position=(2.78, 4.03, 3.93)
+PASS: Upper wooden walkway resolves WoodFloor
+PASS: Dialogue lock suppresses steps
+PASS: Teleport does not generate a phantom step
+PASS: Recorded actual playable phases for gait synchronization review
+PASS: All steps align within 8% of the actual left/right contact cycle
+PASS: No runtime errors during footstep verification
+COMPLETE

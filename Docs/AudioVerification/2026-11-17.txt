@@ -1,0 +1,20 @@
+PASS: Actual Stage12 interface and audio component loaded
+PASS: Menu music fades in while timeScale=0; envelope=0.1966979, dsp=22.6133333333333
+PASS: Music and independent rain playing
+PASS: Original 60 second clip imported as PCM
+PASS: Settings keeps menu music running
+PASS: Settings has separate master, music, rain and sensitivity sliders
+PASS: Music slider mutes only music
+PASS: Music preference stored
+PASS: Rain slider mutes only rain without stopping the loop
+PASS: Rain preference stored and unmute preserves playback position
+PASS: Roof rain stereo seamless loop imported
+PASS: Returning from settings does not restart music
+PASS: Two real-time loop joins without volume gap; overlaps=2, minimumGain=0.65
+PASS: Start button enters prologue with fade underway
+PASS: Music fully stopped after two second release
+PASS: Rain continues uninterrupted through prologue
+PASS: Existing prologue completion enters gameplay with rain retained
+PASS: Return to title fades music back in without duplicate sources
+PASS: No runtime errors during audio verification
+COMPLETE

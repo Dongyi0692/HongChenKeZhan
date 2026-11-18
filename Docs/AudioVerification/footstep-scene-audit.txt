@@ -1,0 +1,73 @@
+Scene: Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity
+Fighter Player at (0.00, 0.05, -14.96)
+Walk Assets/_Game/Art/Aholo20261116/Runtime/Sources/Hongfu_Walk_InPlace.fbx length=1.333333 events=0
+ Phase 0 mixamorig:LeftFoot=(-0.091, 0.094, 0.361);mixamorig:RightFoot=(0.124, 0.152, -0.435)
+ Phase 0.05 mixamorig:LeftFoot=(-0.092, 0.095, 0.277);mixamorig:RightFoot=(0.121, 0.174, -0.435)
+ Phase 0.1 mixamorig:LeftFoot=(-0.093, 0.096, 0.194);mixamorig:RightFoot=(0.116, 0.233, -0.443)
+ Phase 0.15 mixamorig:LeftFoot=(-0.095, 0.096, 0.110);mixamorig:RightFoot=(0.112, 0.318, -0.434)
+ Phase 0.2 mixamorig:LeftFoot=(-0.097, 0.097, 0.026);mixamorig:RightFoot=(0.109, 0.387, -0.326)
+ Phase 0.25 mixamorig:LeftFoot=(-0.099, 0.103, -0.054);mixamorig:RightFoot=(0.107, 0.415, -0.167)
+ Phase 0.3 mixamorig:LeftFoot=(-0.102, 0.118, -0.127);mixamorig:RightFoot=(0.105, 0.388, -0.001)
+ Phase 0.35 mixamorig:LeftFoot=(-0.106, 0.137, -0.195);mixamorig:RightFoot=(0.104, 0.319, 0.148)
+ Phase 0.4 mixamorig:LeftFoot=(-0.110, 0.153, -0.261);mixamorig:RightFoot=(0.103, 0.226, 0.263)
+ Phase 0.45 mixamorig:LeftFoot=(-0.113, 0.164, -0.330);mixamorig:RightFoot=(0.102, 0.138, 0.333)
+ Phase 0.5 mixamorig:LeftFoot=(-0.114, 0.168, -0.408);mixamorig:RightFoot=(0.102, 0.098, 0.357)
+ Phase 0.55 mixamorig:LeftFoot=(-0.109, 0.173, -0.424);mixamorig:RightFoot=(0.103, 0.102, 0.274)
+ Phase 0.6 mixamorig:LeftFoot=(-0.103, 0.222, -0.458);mixamorig:RightFoot=(0.104, 0.107, 0.193)
+ Phase 0.65 mixamorig:LeftFoot=(-0.101, 0.311, -0.437);mixamorig:RightFoot=(0.107, 0.114, 0.114)
+ Phase 0.7 mixamorig:LeftFoot=(-0.099, 0.380, -0.325);mixamorig:RightFoot=(0.110, 0.123, 0.036)
+ Phase 0.75 mixamorig:LeftFoot=(-0.097, 0.408, -0.164);mixamorig:RightFoot=(0.113, 0.131, -0.041)
+ Phase 0.8 mixamorig:LeftFoot=(-0.095, 0.382, 0.005);mixamorig:RightFoot=(0.117, 0.139, -0.118)
+ Phase 0.85 mixamorig:LeftFoot=(-0.093, 0.314, 0.155);mixamorig:RightFoot=(0.120, 0.145, -0.196)
+ Phase 0.9 mixamorig:LeftFoot=(-0.092, 0.221, 0.265);mixamorig:RightFoot=(0.122, 0.149, -0.274)
+ Phase 0.95 mixamorig:LeftFoot=(-0.091, 0.134, 0.333);mixamorig:RightFoot=(0.124, 0.152, -0.353)
+Run Assets/_Game/Art/Aholo20261116/Runtime/Sources/Grunt_Sprint_InPlace.fbx length=0.6666667 events=0
+ Phase 0 mixamorig:LeftFoot=(-0.062, 0.110, 0.447);mixamorig:RightFoot=(0.021, 0.532, -0.604)
+ Phase 0.05 mixamorig:LeftFoot=(-0.017, 0.122, 0.379);mixamorig:RightFoot=(0.010, 0.528, -0.485)
+ Phase 0.1 mixamorig:LeftFoot=(0.019, 0.190, 0.050);mixamorig:RightFoot=(0.004, 0.522, -0.344)
+ Phase 0.15 mixamorig:LeftFoot=(0.012, 0.225, -0.277);mixamorig:RightFoot=(0.004, 0.518, -0.192)
+ Phase 0.2 mixamorig:LeftFoot=(-0.075, 0.219, -0.632);mixamorig:RightFoot=(0.004, 0.506, -0.028)
+ Phase 0.25 mixamorig:LeftFoot=(-0.086, 0.296, -0.660);mixamorig:RightFoot=(-0.001, 0.480, 0.150)
+ Phase 0.3 mixamorig:LeftFoot=(-0.091, 0.530, -0.785);mixamorig:RightFoot=(0.004, 0.438, 0.347)
+ Phase 0.35 mixamorig:LeftFoot=(-0.074, 0.611, -0.769);mixamorig:RightFoot=(0.023, 0.386, 0.514)
+ Phase 0.4 mixamorig:LeftFoot=(-0.059, 0.658, -0.725);mixamorig:RightFoot=(0.048, 0.313, 0.588)
+ Phase 0.45 mixamorig:LeftFoot=(-0.042, 0.682, -0.651);mixamorig:RightFoot=(0.064, 0.221, 0.539)
+ Phase 0.5 mixamorig:LeftFoot=(-0.028, 0.691, -0.544);mixamorig:RightFoot=(0.056, 0.139, 0.447)
+ Phase 0.55 mixamorig:LeftFoot=(-0.015, 0.692, -0.401);mixamorig:RightFoot=(0.026, 0.139, 0.409)
+ Phase 0.6 mixamorig:LeftFoot=(-0.008, 0.655, -0.229);mixamorig:RightFoot=(0.007, 0.183, 0.416)
+ Phase 0.65 mixamorig:LeftFoot=(0.007, 0.567, -0.042);mixamorig:RightFoot=(-0.016, 0.235, 0.093)
+ Phase 0.7 mixamorig:LeftFoot=(0.021, 0.473, 0.162);mixamorig:RightFoot=(-0.015, 0.248, -0.250)
+ Phase 0.75 mixamorig:LeftFoot=(0.011, 0.411, 0.372);mixamorig:RightFoot=(0.066, 0.265, -0.608)
+ Phase 0.8 mixamorig:LeftFoot=(-0.019, 0.365, 0.535);mixamorig:RightFoot=(0.075, 0.362, -0.681)
+ Phase 0.85 mixamorig:LeftFoot=(-0.051, 0.308, 0.604);mixamorig:RightFoot=(0.045, 0.535, -0.770)
+ Phase 0.9 mixamorig:LeftFoot=(-0.068, 0.242, 0.580);mixamorig:RightFoot=(0.043, 0.536, -0.750)
+ Phase 0.95 mixamorig:LeftFoot=(-0.064, 0.165, 0.478);mixamorig:RightFoot=(0.032, 0.535, -0.693)
+Animator Hongfu_Aholo_Model
+Probe (0.00, 2.00, -9.00)
+ (0.00, -0.23, -9.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/EnvGround_South trigger=False material=S6_dark_wet_mud
+Probe (0.00, 2.00, -7.00)
+ (0.00, -0.05, -7.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_porch_stone_step.005 trigger=False material=S2_stone_threshold.012
+ (0.00, -0.23, -7.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/EnvGround_South trigger=False material=S6_dark_wet_mud
+Probe (0.00, 2.00, -5.50)
+ (0.00, 0.14, -5.50) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_porch_wood_deck.005 trigger=False material=S2_warm_floor.012
+ (0.00, -0.23, -5.50) FengChen Inn - Stage 5/Stage11 Final - Visuals/EnvGround_South trigger=False material=S6_dark_wet_mud
+Probe (0.00, 2.00, -4.00)
+ (0.00, 0.14, -4.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012
+Probe (0.00, 2.00, -2.00)
+ (0.00, 0.14, -2.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012
+Probe (-3.00, 2.00, 1.00)
+ (-3.00, 0.19, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_plank_08.005 trigger=False material=S4_floor_variant_2.011
+ (-3.00, 0.14, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012
+Probe (4.70, 6.00, 1.00)
+ (4.70, 2.44, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/Stage12 Stair smooth walking surface trigger=False material=none
+ (4.70, 2.43, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/Stair_New_ClosedRiser trigger=False material=Designer_Logic_PBR.024
+ (4.70, 0.19, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_plank_28.005 trigger=False material=S4_floor_variant_2.011
+ (4.70, 0.14, 1.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012
+Probe (4.70, 6.00, 4.00)
+ (4.70, 3.99, 4.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/SecondFloor_Root.004/SecondFloor_rear_plank_03.005 trigger=False material=S4_floor_variant_1.011
+ (4.70, 3.70, 4.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/SecondFloor_Root.004/SecondFloor_rear_walk.005 trigger=False material=S2_walnut_board.012
+ (4.70, 0.19, 4.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_plank_28.005 trigger=False material=S4_floor_variant_2.011
+ (4.70, 0.14, 4.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012
+Probe (-4.00, 6.00, 3.00)
+ (-4.00, 0.19, 3.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_plank_05.005 trigger=False material=S4_floor_variant_2.011
+ (-4.00, 0.14, 3.00) FengChen Inn - Stage 5/Stage11 Final - Visuals/GroundFloor_Root.004/GroundFloor_slab.005 trigger=False material=S2_warm_floor.012

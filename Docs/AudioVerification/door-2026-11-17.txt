@@ -1,0 +1,17 @@
+PASS: Existing Stage12 front door, rear door and ambience loaded
+PASS: Initially closed doors do not play spurious sound
+PASS: Front hinge creak starts with actual rotation
+PASS: Opening door smoothly increases existing rain source
+PASS: Pause freezes door and hinge sound while rain continues
+PASS: Resume continues door and hinge sound
+PASS: Full open stops creak without closure impact
+PASS: Closing uses separate creak with no premature impact
+PASS: Impact starts on the actual fully-closed frame
+PASS: Closed stationary door does not repeat impact or creak
+PASS: Closed door gradually restores indoor rain without restart
+PASS: Mid-motion reversal switches creak without false closure hit
+PASS: Negative-angle rear door also drives creak and rain exposure
+PASS: Rear door impact follows its own close duration
+PASS: Rear door audio finishes cleanly
+PASS: No runtime errors during door audio verification
+COMPLETE

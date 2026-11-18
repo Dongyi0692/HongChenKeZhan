@@ -1,0 +1,29 @@
+PASS: Interface, victory and existing rain controllers loaded
+PASS: User-selected Victory B imported as original-length stereo PCM
+PASS: Main menu, settings and prologue buttons have UI triggers
+PASS: Four independent saved volume controls loaded
+PASS: UI_Hover_Brush imported from supplied recording
+PASS: UI_Confirm_Wood imported from supplied recording
+PASS: UI_Story_PageTurn imported from supplied recording
+PASS: Supplied brush-past recording replaces the old hover blip
+PASS: Hover cue plays the supplied brush-past recording
+PASS: Dialogue continue button stays silent when the pointer passes over it
+PASS: Three main menu buttons bound
+PASS: Menu buttons keep the hover cue
+PASS: Hover cooldown prevents rapid retrigger
+PASS: Hover resumes after short cooldown
+PASS: Main menu settings click plays wooden confirmation
+PASS: Wooden confirmation contains audible PCM samples
+PASS: Prologue advances through all six paragraphs in Play Mode
+PASS: Five later prologue paragraphs each trigger one page turn
+PASS: Roof and outdoor rain beds are both present
+PASS: Elite victory transition starts B exactly once
+PASS: Victory B fades in during actual result dialogue
+PASS: Victory B contains audible PCM at the played position
+PASS: Continuous rain grows clearer during victory without restarting
+PASS: Repeated victory signal cannot restart the cue
+PASS: Victory B plays forward without looping or restarting
+PASS: Existing backyard exit and door bindings available
+PASS: Actual backyard exit trigger fades B out within about two seconds
+PASS: No runtime errors during UI and victory test
+COMPLETE (instrumented victory stage; combat hits covered by CombatAudioVerification)

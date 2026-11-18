@@ -1,0 +1,23 @@
+{
+  "WoodOpenHinge": {
+    "source_start": 1.45,
+    "source_end": 2.8,
+    "loop": true,
+    "seconds": 1.27,
+    "gain": 2.3012478368755636
+  },
+  "WoodCloseHinge": {
+    "source_start": 4.7,
+    "source_end": 6.12,
+    "loop": true,
+    "seconds": 1.34,
+    "gain": 6.6222529251770075
+  },
+  "WoodCloseImpact": {
+    "source_start": 6.215,
+    "source_end": 6.8,
+    "loop": false,
+    "seconds": 0.585,
+    "gain": 2.214406675983357
+  }
+}

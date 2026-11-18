@@ -1,6 +1,6 @@
 # 红尘客栈 · 开始试玩
 
-更新日期：2026-11-17。Stage12 场景和 MainMenuV2 已整合，可编辑工程已上传 GitHub 的 `integrate-stage12-story` 分支，Windows 0.3.0 试玩版已生成。
+源码交接更新：2026-11-18。当前可编辑工程以 GitHub `main` 为准；共创者先读 `Docs/Delivery/2026-11-18/HANDOFF.md`。下述 Windows 0.3.0 试玩版是 2026-11-17 构建，未随本轮源码重新构建。
 
 ## 不打开 Unity，直接试玩
 
@@ -8,7 +8,7 @@
 
 ## 打开当前版本
 
-1. 在 Unity Hub 添加 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_upload`。本地分支为 `integrate-stage12-story`，不要误开旧 `FengChenInn` 工程。
+1. 先克隆仓库并运行 `git lfs pull`，再在 Unity Hub 添加克隆后的仓库根目录。默认 `main` 是本轮交付版；不要误开旧 `FengChenInn` 工程。
 2. 使用 **Unity 6.3 LTS（6000.3.25f1）**。
 3. 打开 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`，点击 Play，再选“开始游戏”。需要时点击游戏画面捕获鼠标。
 

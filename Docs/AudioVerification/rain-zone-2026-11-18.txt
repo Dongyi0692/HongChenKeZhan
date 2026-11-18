@@ -1,0 +1,45 @@
+PASS: Existing Stage12 interface, audio manager and player loaded
+PASS: Existing footstep probe and new shelter zone both attached to the player
+PASS: Outdoor rain loop resolved from Resources
+PASS: Outdoor loop is 48 kHz stereo; 48000 Hz / 2 ch
+PASS: Both rain layers loop instead of one-shot playback
+PASS: Outdoor loop keeps a natural length; 81.5 s
+PASS: Exactly one outdoor source; nothing duplicated at start
+PASS: Shelter state active once gameplay starts
+PASS: Open road resolves outdoors; mix=1.00
+PASS: Outdoor rain carries the bed outside; roof=0.000 open=0.120
+PASS: Both loops keep playing; a zone change never restarts a source
+PASS: Ground under the player is WetGround; EnvGround_South
+PASS: Wet footsteps use 4 m near field so the follow camera never attenuates them
+PASS: Existing 3D one-shot voices unchanged apart from the near field
+INFO: wet=8 wood=8 ground=WetGround firstWet=WetGround_01
+PASS: Walking outdoors triggers wet steps; count=4 speed=2.10
+PASS: Every outdoor step uses the promoted wet set; clip=WetGround_02, clip=WetGround_03, clip=WetGround_01, clip=WetGround_06
+PASS: Wet step source level raised; peak voice=0.660
+PASS: Wet set legitimately distinct from wood
+PASS: Indoor and outdoor layers overlap through the doorway; frames=41, overlap=25
+PASS: Crossfade never stacks the two loops louder than one bed; peak=0.120 vs bed=0.120
+PASS: Crossfade never cuts the bed to silence; minimum=0.120
+PASS: Hall resolves indoors after the debounce; changes=1
+PASS: Roof rain takes over inside; roof=0.120 open=0.000
+PASS: Hall floor recognised from the existing surface map; GroundFloor_slab.005
+PASS: Indoor movement keeps wooden steps and roof rain; steps=2
+PASS: Walking inside never flickers back to outdoor rain
+PASS: Backyard resolves outdoors again
+PASS: Outdoor rain restored on the backyard side; open=0.120
+PASS: Wet steps resume as soon as the player is outside
+PASS: Existing combat audio system present
+PASS: Hit and block feedback still fire
+PASS: Combat does not duck or restart the rain bed; delta=0.0000
+PASS: Rain keeps running through combat
+PASS: Repeated crossings keep committing; new changes=9
+PASS: Repeated crossings never duplicate the outdoor source
+PASS: Outdoor loop keeps its playback position across crossings (no restart)
+PASS: Final state indoors is stable, no stuck crossfade
+PASS: Hit feedback still fires under the roof
+PASS: Indoor combat leaves the roof rain bed untouched; delta=0.0000
+PASS: No runtime errors during rain zone verification
+REPORT: bed=0.120 roofSample=1800192 outdoorSample=1800192
+REPORT: wetSet=WetGround_01,WetGround_02,WetGround_03,WetGround_04,WetGround_05,WetGround_06,WetGround_07,WetGround_08
+REPORT: wetVolume=0.8 minDistance=4 transition=2
+COMPLETE
