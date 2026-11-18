@@ -1,0 +1,204 @@
+{
+  "canvas": [
+    1920,
+    1080
+  ],
+  "sprites": [
+    {
+      "file": "PNG/01_序章.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        579,
+        95,
+        90,
+        67
+      ],
+      "anchoredPosition_from_center_px": [
+        -336.0,
+        411.5
+      ]
+    },
+    {
+      "file": "PNG/02a_序章左线.png",
+      "kind": "Image",
+      "rect_top_left_px": [
+        409,
+        119,
+        128,
+        5
+      ],
+      "anchoredPosition_from_center_px": [
+        -487.0,
+        418.5
+      ]
+    },
+    {
+      "file": "PNG/02b_序章右线.png",
+      "kind": "Image",
+      "rect_top_left_px": [
+        700,
+        119,
+        128,
+        5
+      ],
+      "anchoredPosition_from_center_px": [
+        -196.0,
+        418.5
+      ]
+    },
+    {
+      "file": "PNG/03a_标题红色笔刷.png",
+      "kind": "Image",
+      "rect_top_left_px": [
+        278,
+        191,
+        645,
+        53
+      ],
+      "anchoredPosition_from_center_px": [
+        -359.5,
+        322.5
+      ]
+    },
+    {
+      "file": "PNG/03_标题_隋大业初年长安城外.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        302,
+        185,
+        580,
+        83
+      ],
+      "anchoredPosition_from_center_px": [
+        -368.0,
+        313.5
+      ]
+    },
+    {
+      "file": "PNG/05_正文1.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        301,
+        442,
+        51
+      ],
+      "anchoredPosition_from_center_px": [
+        -427.0,
+        213.5
+      ]
+    },
+    {
+      "file": "PNG/06_正文2.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        357,
+        659,
+        94
+      ],
+      "anchoredPosition_from_center_px": [
+        -318.5,
+        136.0
+      ]
+    },
+    {
+      "file": "PNG/07_正文3.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        456,
+        411,
+        51
+      ],
+      "anchoredPosition_from_center_px": [
+        -442.5,
+        58.5
+      ]
+    },
+    {
+      "file": "PNG/08_正文4.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        512,
+        535,
+        51
+      ],
+      "anchoredPosition_from_center_px": [
+        -380.5,
+        2.5
+      ]
+    },
+    {
+      "file": "PNG/09_正文5.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        568,
+        535,
+        51
+      ],
+      "anchoredPosition_from_center_px": [
+        -380.5,
+        -53.5
+      ]
+    },
+    {
+      "file": "PNG/10_正文6.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        312,
+        624,
+        659,
+        94
+      ],
+      "anchoredPosition_from_center_px": [
+        -318.5,
+        -131.0
+      ]
+    },
+    {
+      "file": "PNG/11_署名_红尘客栈.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        646,
+        728,
+        312,
+        63
+      ],
+      "anchoredPosition_from_center_px": [
+        -158.0,
+        -219.5
+      ]
+    },
+    {
+      "file": "PNG/13_点击继续_普通.png",
+      "kind": "Button sprite",
+      "rect_top_left_px": [
+        832,
+        927,
+        234,
+        60
+      ],
+      "anchoredPosition_from_center_px": [
+        -11.0,
+        -417.0
+      ]
+    },
+    {
+      "file": "PNG/14_跳过序章.png",
+      "kind": "Text/TMP optional",
+      "rect_top_left_px": [
+        1710,
+        937,
+        157,
+        47
+      ],
+      "anchoredPosition_from_center_px": [
+        828.5,
+        -420.5
+      ]
+    }
+  ]
+}

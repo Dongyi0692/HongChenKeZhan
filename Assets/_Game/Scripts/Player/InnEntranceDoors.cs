@@ -20,6 +20,7 @@ namespace FengChenInn
         public bool PlayerInRange { get; private set; }
         public float CurrentAngle => angle;
 
+        private InnDoorAudio doorAudio;
         private Quaternion leftClosed;
         private Quaternion rightClosed;
         private float angle;
@@ -27,6 +28,7 @@ namespace FengChenInn
 
         private void Awake()
         {
+            doorAudio = GetComponent<InnDoorAudio>() ?? gameObject.AddComponent<InnDoorAudio>();
             AttachDoorVisual("Existing_wood_door_left_root", leftHinge);
             AttachDoorVisual("Existing_wood_door_right_root", rightHinge);
             if (leftHinge != null) leftClosed = leftHinge.localRotation;
@@ -87,9 +89,12 @@ namespace FengChenInn
             bool open = HoldOpenForEncounter || OpenRequested
                 || !ManualControl && (PlayerInRange || Time.time - lastPlayerNearAt < closeDelay);
             float target = open ? openAngle : 0f;
+            float previousAngle = angle;
             angle = Mathf.MoveTowards(angle, target, rotationSpeed * Time.deltaTime);
             if (leftHinge != null) leftHinge.localRotation = leftClosed * Quaternion.Euler(0f, -angle, 0f);
             if (rightHinge != null) rightHinge.localRotation = rightClosed * Quaternion.Euler(0f, angle, 0f);
+            if (doorAudio != null && (leftHinge != null || rightHinge != null))
+                doorAudio.SyncMotion(previousAngle, angle, openAngle);
         }
     }
 }

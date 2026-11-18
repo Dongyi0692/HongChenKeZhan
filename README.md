@@ -1,6 +1,6 @@
 # 红尘客栈
 
-Unity 3D 武侠动作 Demo，可编辑工程。2026-11-18 本地编辑版 v6：修正动画换片首帧权重、跑步手臂与节奏、急转身和小落差接地；前门恢复双向感应，并接入后门离栈、回身支援和最终离场。左键单段轻击、右键逐次重击、F 突进斩（30 体力，无冷却）保持。当前体验请在 Unity 打开下面的场景并点击 Play。本轮只更新可编辑工程，没有生成 exe、ZIP 或上传 GitHub；旧 0.3.2（v3）独立程序不包含 v4/v5/v6 改动。
+《红尘客栈》Unity 可编辑工程。2026-11-18 本地共创合并版包含队友提交 `ad92f44` 的序章、菜单和游戏音频、入口平台移除，以及本地快照 `709d2e9` 的 v6 战斗、前门常开、大堂连续碰撞与三段剧情。当前体验请在 Unity 打开下面的场景并点击 Play。左键轻击、右键逐式重击，F 突进斩消耗 30 体力。
 
 保留的 0.3.1 全屏修复（历史验证）：设置中的显示模式和分辨率跟随实际窗口状态，修正重启恢复顺序，开放窗口最大化与调整大小。主菜单或 Esc 暂停后进入“设置”，点击显示模式选择“无边框全屏”；Alt+Enter 仍可切换。该版 Windows 实机已检查三种模式、分辨率切换、最大化及重启保存；最终 exe 已复测最大化状态的文字映射。构建 0 错误、1 条原有动画接口警告，未重跑完整战斗验收。证据为本机 `Logs/FullscreenV2_*.log`、`Logs/FullscreenCandidateRebuild.txt`。旧 v1、v2 保留。
 
@@ -8,17 +8,15 @@ Unity 3D 武侠动作 Demo，可编辑工程。2026-11-18 本地编辑版 v6：�
 
 | 项目 | 当前值 |
 |---|---|
-| 本机工程 | `C:/Users/東壹/Documents/Codex/HongChenKeZhan_upload` |
-| 本地分支 | `integrate-stage12-story` |
+| 本机工程 | `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged` |
+| 本地分支 | `integrate/stage12-audio-v6` |
 | 编辑器 | Unity 6.3 LTS，`6000.3.25f1` |
 | 当前场景 | `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity` |
-| 当前试玩方式 | Unity 打开当前场景点击 Play；旧 exe 不包含编辑版 v6 修改 |
-| 历史 v3 独立程序 | `Builds/2026-11-17_v3/Windows/HongChenKeZhan.exe`，版本 0.3.2，已构建 |
-| 历史 v3 压缩包 | `Builds/2026-11-17_v3/HongChenKeZhan_Windows_2026-11-17_v3.zip`，约 556.16 MiB，174 个文件逐条解压 SHA256 校验通过，使用时须完整解压 |
-| 上一份可运行包 | `Builds/2026-11-17_v2/Windows/HongChenKeZhan.exe`，版本 0.3.1，不包含本轮玩法修复 |
-| GitHub 状态 | 历史整合版本已上传 `integrate-stage12-story`；本地 v2/v3/v4/v5/v6 更新尚未上传 |
+| 当前试玩方式 | Unity 打开当前场景并点击 Play，开始游戏后可以阅读或跳过序章 |
+| 本轮检查 | Git 合并、资源完整性与场景和脚本静态检查。实际试玩由项目作者进行 |
+| GitHub 状态 | 队友交付来自 `main` 和 `integrate-stage12-story` 的 `ad92f44`，本合并版在本机分支 |
 
-不要误开旧的 `FengChenInn` 工程或旧 `InnDuel.unity`、`ActionLab.unity`。队友克隆后在自己的仓库根目录打开工程。完整操作见 [README_开始试玩.md](README_开始试玩.md)。
+完整操作见 [README_开始试玩.md](README_开始试玩.md)。双方原始交接和资源来源见 [2026-11-18 共创交接](Docs/Delivery/2026-11-18/HANDOFF.md)。下文的历史 `Builds`、`Backups` 和 `Logs` 路径位于原工作目录 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_upload`。
 
 ## 场景整合来源（历史）
 

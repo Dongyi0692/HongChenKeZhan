@@ -1,0 +1,49 @@
+PASS: Interface, victory and existing rain controllers loaded
+PASS: User-selected Victory B imported as original-length stereo PCM
+PASS: Victory B is the clip the player actually buffers
+PASS: Main menu, settings and prologue buttons have UI triggers
+PASS: Four independent saved volume controls loaded
+PASS: UI_Hover_Brush imported from supplied recording
+PASS: UI_Confirm_Wood imported from supplied recording
+PASS: UI_Story_PageTurn imported from supplied recording
+PASS: UI_Ledger_PageTurn imported from supplied recording
+PASS: Supplied brush-past recording replaces the old hover blip
+PASS: Supplied ledger page turn keeps its full 0.59 s tail and matches the dialogue cue's level
+PASS: Hover cue plays the supplied brush-past recording
+PASS: Dialogue continue button stays silent when the pointer passes over it
+PASS: Three main menu buttons bound
+PASS: Menu buttons keep the hover cue
+PASS: Hover cooldown prevents rapid retrigger
+PASS: Hover resumes after short cooldown
+PASS: Main menu settings click plays wooden confirmation
+PASS: Wooden confirmation contains audible PCM samples
+PASS: Prologue advances through all six paragraphs in Play Mode
+PASS: Five later prologue paragraphs each trigger one page turn
+PASS: Player, encounter and ledger anchor present
+PASS: Roof and outdoor rain beds are both present
+PASS: E at the ledger opens the spread; view=Ledger
+PASS: Opening the ledger plays exactly one page turn
+PASS: Ledger uses the supplied page-turn recording
+PASS: Reading the ledger never starts the victory cue
+PASS: Closing the ledger plays the second half of the gesture
+PASS: Ledger closes back into the game; view=Dialogue
+PASS: Fresh run starts with Victory B unarmed
+PASS: Elite win still runs its departure dialogue
+PASS: Elite win stays silent: the story is not over yet
+PASS: Leaving the inn keeps Victory B silent
+PASS: Clearing the last wave opens the farewell
+PASS: Farewell dialogue is not the trigger; the result card is
+PASS: Farewell ends on the result card; view=Victory
+PASS: True ending starts Victory B exactly once
+PASS: Victory B is playing once and is not looping
+PASS: Victory B is audible on the result card; volume=0.52
+PASS: Victory B contains audible PCM at the played position
+PASS: Rain keeps playing under the score and grows clearer; sum=0.204
+PASS: Repeated victory signal cannot restart the cue
+PASS: Victory B advances instead of looping or restarting
+PASS: Result card freezes the world while the cue plays
+PASS: Restart stops Victory B
+PASS: Restart returns to the title
+PASS: Next run re-arms Victory B
+PASS: No runtime errors during UI, ledger and ending test
+COMPLETE (instrumented ending; combat hits covered by CombatAudioVerification)

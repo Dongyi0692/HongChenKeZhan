@@ -1,0 +1,149 @@
+{
+  "LightSwing": {
+    "original": "clean-fast-swoosh.aiff",
+    "sha256": "f1c4fa9c5f9ff8aafa67829005ad6e78e323d2851d405fc490ed7bab8137e9c1",
+    "clips": [
+      {
+        "file": "LightSwing.wav",
+        "source_start": 0.228,
+        "source_end": 0.68,
+        "gain_db": -7.83,
+        "peak_dbfs": -5.63
+      }
+    ]
+  },
+  "HeavySwing": {
+    "original": "gaussthewizard__swing.mp3",
+    "sha256": "a72df5951358448eb65e367baa66f0521172ff580d85a6b68f3db1d98dbf7169",
+    "clips": [
+      {
+        "file": "HeavySwing.wav",
+        "source_start": 0.065,
+        "source_end": 0.43,
+        "gain_db": -10.08,
+        "peak_dbfs": -7.73
+      }
+    ]
+  },
+  "Block": {
+    "original": "格挡.wav",
+    "sha256": "0a096881ed57372237aa2d1b334565560fc5c3709887e54ac3220b3d8ac02166",
+    "clips": [
+      {
+        "file": "Block.wav",
+        "source_start": 0,
+        "source_end": 1.1,
+        "gain_db": -3.98,
+        "peak_dbfs": -3.83
+      }
+    ]
+  },
+  "Hit": {
+    "original": "sword-impact.wav",
+    "sha256": "46fb4eebe4f7e6e4baedce4a10fce0c3b17d2914278316bb1f681a393baf8bbd",
+    "clips": [
+      {
+        "file": "Hit.wav",
+        "source_start": 0,
+        "source_end": 1.25,
+        "gain_db": -9.96,
+        "peak_dbfs": -7.82
+      }
+    ]
+  },
+  "Combo": {
+    "original": "连续挥剑声.wav",
+    "sha256": "e48dc2233c15cae64749c90a8c851dbf152c954df8cf9d9f6077d45883f33b9d",
+    "clips": [
+      {
+        "file": "Combo_01.wav",
+        "source_start": 0,
+        "source_end": 0.42,
+        "gain_db": -6.14,
+        "peak_dbfs": -7.84
+      },
+      {
+        "file": "Combo_02.wav",
+        "source_start": 0.425,
+        "source_end": 0.85,
+        "gain_db": -6.24,
+        "peak_dbfs": -7.94
+      },
+      {
+        "file": "Combo_03.wav",
+        "source_start": 0.85,
+        "source_end": 1.285,
+        "gain_db": -6.35,
+        "peak_dbfs": -8.05
+      },
+      {
+        "file": "Combo_04.wav",
+        "source_start": 1.285,
+        "source_end": 1.705,
+        "gain_db": -5.39,
+        "peak_dbfs": -7.09
+      },
+      {
+        "file": "Combo_05.wav",
+        "source_start": 1.705,
+        "source_end": 2.13,
+        "gain_db": -6.06,
+        "peak_dbfs": -7.76
+      }
+    ]
+  },
+  "Dodge": {
+    "original": "闪避.wav",
+    "sha256": "5c7324fcf8b39bd1754bcacadd48046ae6129d2aa51becfd4ccc95f2374ac651",
+    "clips": [
+      {
+        "file": "Dodge.wav",
+        "source_start": 0.025,
+        "source_end": 0.56,
+        "gain_db": 14.92,
+        "peak_dbfs": -4.66
+      }
+    ]
+  },
+  "Drop": {
+    "original": "metal-blade-drop.wav",
+    "sha256": "74c1fbd385fcf14f45260682819a6e4e77c4cb29afb077103bed72196fc43903",
+    "clips": [
+      {
+        "file": "Drop_01.wav",
+        "source_start": 0.44,
+        "source_end": 1.4,
+        "gain_db": -3.11,
+        "peak_dbfs": -3.74
+      },
+      {
+        "file": "Drop_02.wav",
+        "source_start": 2.75,
+        "source_end": 3.8,
+        "gain_db": 0.22,
+        "peak_dbfs": -4.14
+      },
+      {
+        "file": "Drop_03.wav",
+        "source_start": 5.44,
+        "source_end": 6.23,
+        "gain_db": 3.46,
+        "peak_dbfs": -3.74
+      },
+      {
+        "file": "Drop_04.wav",
+        "source_start": 7.52,
+        "source_end": 8.75,
+        "gain_db": -3.64,
+        "peak_dbfs": -4.41
+      },
+      {
+        "file": "Drop_05.wav",
+        "source_start": 9.92,
+        "source_end": 11.05,
+        "gain_db": 4.68,
+        "peak_dbfs": -4.08
+      }
+    ]
+  }
+}

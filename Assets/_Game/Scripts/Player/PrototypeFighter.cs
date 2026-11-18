@@ -876,18 +876,21 @@ namespace FengChenInn
                 // jumping or starting an attack may interrupt this recovery.
                 if (travelSpeed < .1f && animationDriver.ReleaseGuard()) return;
                 if (animationDriver.HasTravelSpeed(travelSpeed) && IsMotionAvailable(CombatMotion.Run))
-                {
-                    float reference = animationDriver.motionSet.runReferenceSpeed;
-                    // The imported sprint's travel estimate is much faster than
-                    // this indoor character. Keep a natural cadence at full
-                    // movement speed instead of slowing the whole body to .54x.
-                    float fullRate = Mathf.Max(EffectiveMoveSpeed / Mathf.Max(.1f, reference), fullSpeedRunPlayback);
-                    float rate = Mathf.Clamp(travelSpeed / Mathf.Max(.1f, EffectiveMoveSpeed) * fullRate, .35f, 1.5f);
-                    animationDriver.Play(CombatMotion.Run, animationDriver.motionSet.locomotionFade, rate);
-                }
+                    animationDriver.Play(CombatMotion.Run, animationDriver.motionSet.locomotionFade, CalculateRunPlaybackRate(travelSpeed));
                 else animationDriver.SetLocomotion(0f, encounter != null && encounter.IsCombatActive);
             }
         }
+
+        public float CalculateRunPlaybackRate(float travelSpeed)
+        {
+            float move = EffectiveMoveSpeed;
+            float reference = animationDriver != null && animationDriver.motionSet != null
+                ? animationDriver.motionSet.runReferenceSpeed : move;
+            // Keep the imported sprint's cadence at full speed and ease it at lower speeds.
+            float fullRate = Mathf.Max(move / Mathf.Max(.1f, reference), fullSpeedRunPlayback);
+            return Mathf.Clamp(travelSpeed / Mathf.Max(.1f, move) * fullRate, .35f, 1.5f);
+        }
+
         private void OnDamaged(CombatActor source, int amount)
         {
             State = ActionState.Ready;

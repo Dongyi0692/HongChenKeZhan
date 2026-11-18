@@ -11,7 +11,7 @@ namespace FengChenInn
     [DefaultExecutionOrder(10010)]
     public sealed class InnInterface : MonoBehaviour
     {
-        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat, Ledger, Epilogue }
+        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat, Ledger, Epilogue, Prologue }
         private enum StoryPart { Road, Hall, TutorialFight, EliteArriving, EliteFight, Departure, ReturnToHelp, JointFight, Finished, AwaitSentry, Practice, FinalDeparture }
         private enum PendingBattle { None, Tutorial, Elite, Rescue }
 
@@ -85,6 +85,8 @@ namespace FengChenInn
         private UnityEngine.UI.Text attackFeedback, defenseFeedback;
         private float attackFeedbackUntil, defenseFeedbackUntil, targetFlashUntil, nextFeedbackSoundAt;
         private CombatActor lastHitTarget;
+        private MenuAudio menuAudio;
+        private UiVictoryAudio uiVictoryAudio;
         private AudioSource feedbackAudio;
         private AudioClip strikeSound, blockSound, hurtSound;
         private readonly RaycastHit[] markerObstructions = new RaycastHit[32];
@@ -116,6 +118,8 @@ namespace FengChenInn
             }
             titleShade = MakeTexture(true);
             panelGrain = MakeTexture(false);
+            menuAudio = gameObject.AddComponent<MenuAudio>();
+            uiVictoryAudio = gameObject.AddComponent<UiVictoryAudio>();
             AudioListener.volume = PlayerPrefs.GetFloat(Pref + "volume", AudioListener.volume);
             int recommendedQuality = SystemInfo.graphicsDeviceName.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0
                 ? 0 : QualitySettings.GetQualityLevel();
@@ -128,6 +132,7 @@ namespace FengChenInn
             }
             BuildPlay();
             BuildTitle();
+            BuildStoryIntro();
             BuildTutorial();
             BuildDialogue();
             BuildLedger();
@@ -152,7 +157,7 @@ namespace FengChenInn
                 else if (view == View.Pause) Show(View.Play);
                 else if (view == View.Settings) CloseSettings();
                 else if (view == View.Tutorial) CloseTutorial();
-                else if (view == View.Ledger) Show(View.Play);
+                else if (view == View.Ledger) { uiVictoryAudio.LedgerPage(); Show(View.Play); }
                 return;
             }
             if (view == View.Dialogue)
@@ -356,7 +361,7 @@ namespace FengChenInn
             label.color = color;
             if (offense) attackFeedbackUntil = Time.unscaledTime + .7f;
             else defenseFeedbackUntil = Time.unscaledTime + .7f;
-            if (feedbackAudio != null && sound != null && Time.unscaledTime >= nextFeedbackSoundAt)
+            if (CombatAudioSystem.Instance == null && feedbackAudio != null && sound != null && Time.unscaledTime >= nextFeedbackSoundAt)
             {
                 feedbackAudio.PlayOneShot(sound);
                 nextFeedbackSoundAt = Time.unscaledTime + .045f;
@@ -376,7 +381,8 @@ namespace FengChenInn
         {
             // An actual cover hit is audible from the rear doorway. Reuse the
             // existing metal contact cue; no narrator voice or staged hit event.
-            if (part == StoryPart.ReturnToHelp && duel.RescueCoverActive && source == duel.EliteActor
+            if (CombatAudioSystem.Instance == null && part == StoryPart.ReturnToHelp
+                && duel.RescueCoverActive && source == duel.EliteActor
                 && view == View.Play && feedbackAudio != null && blockSound != null
                 && Time.unscaledTime >= nextFeedbackSoundAt)
             {
@@ -433,6 +439,14 @@ namespace FengChenInn
         {
             ClearCombatFeedback();
             view = next;
+            var scaler = GetComponent<CanvasScaler>();
+            if (scaler != null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = next == View.Prologue ? new Vector2(1920, 1080) : new Vector2(1600, 900);
+                scaler.screenMatchMode = next == View.Prologue ? CanvasScaler.ScreenMatchMode.MatchWidthOrHeight : CanvasScaler.ScreenMatchMode.Expand;
+                if (next == View.Prologue) scaler.matchWidthOrHeight = .5f;
+            }
             foreach (var pair in views) pair.Value.gameObject.SetActive(pair.Key == next);
             bool play = next == View.Play;
             fighter.SetDialoguePose(next == View.Dialogue || next == View.Ledger || next == View.Epilogue);
@@ -440,7 +454,8 @@ namespace FengChenInn
             input.enabled = play;
             fighter.ClearInput();
             PrototypeInput.SetCursor(play);
-            bool titleView = next == View.Title || (next == View.Settings && settingsReturn == View.Title);
+            bool titleView = next == View.Title || next == View.Prologue || (next == View.Settings && settingsReturn == View.Title);
+            menuAudio.SetMenu(titleView);
             if (orbit != null)
             {
                 if (!play) orbit.ClearTargetLock();
@@ -467,6 +482,23 @@ namespace FengChenInn
             if (feedbackAudio != null) feedbackAudio.Stop();
         }
 
+        private void BuildStoryIntro()
+        {
+            var layer = CreateView(View.Prologue);
+            layer.name = "StoryIntroPanel";
+            layer.gameObject.SetActive(false);
+            layer.gameObject.AddComponent<StoryIntroPanel>().Build(() =>
+            {
+                if (view == View.Prologue) StartGame();
+            });
+        }
+
+        private void BeginStoryIntro()
+        {
+            if (view != View.Title) return;
+            Show(View.Prologue);
+        }
+
         private void StartGame()
         {
             firstTutorial = false;
@@ -489,6 +521,8 @@ namespace FengChenInn
 
         private void Restart(bool toTitle)
         {
+            uiVictoryAudio.ResetVictory();
+            menuAudio.SetVictoryRain(false);
             if (!toTitle && (view == View.Defeat || duel.CanRetryCurrentBattle))
             {
                 RetryCurrentBattle();
@@ -580,6 +614,8 @@ namespace FengChenInn
             }
             if (part == StoryPart.EliteFight && duel.Stage == DuelEncounter.EncounterStage.EliteVictory)
             {
+                // The pursuer yields, but the night is not over: the last wave still has
+                // to be beaten. Keep the victory score for that real ending only.
                 input.StoryAllowsCombat = false;
                 // This was a test of skill. Restore the existing standing ally
                 // before pausing for dialogue, rather than freeze a defeated pose.
@@ -748,7 +784,11 @@ namespace FengChenInn
                     if (ledgerAnchor == null) return "账本交互点尚未配置";
                     if (Near(ledgerAnchor.position, ledgerInteractionDistance))
                     {
-                        if (interact) Show(View.Ledger);
+                        if (interact)
+                        {
+                            uiVictoryAudio.LedgerPage();
+                            Show(View.Ledger);
+                        }
                         return "E   翻阅账本";
                     }
                     return "店内无人 · 查看账台上的账本";
@@ -873,6 +913,8 @@ namespace FengChenInn
         private void FinishReadingLedger()
         {
             if (view != View.Ledger) return;
+            // Closing the book is the second half of the same paper gesture.
+            uiVictoryAudio.LedgerPage();
             ledgerRead = true;
             part = StoryPart.AwaitSentry;
             Show(View.Play);
@@ -1014,6 +1056,10 @@ namespace FengChenInn
         private void ShowVictory()
         {
             victoryStats.text = $"{InnStoryScript.VictoryResult}\n战斗用时  {Mathf.RoundToInt(fightLength)} 秒";
+            // The final result follows the rear departure and epilogue. Play the
+            // one-shot victory cue here so the dialogue cannot consume it early.
+            uiVictoryAudio.StartVictory();
+            menuAudio.SetVictoryRain(true);
             Show(View.Victory);
         }
 
@@ -1098,9 +1144,11 @@ namespace FengChenInn
 
         private void FrameActors(Transform a, Transform b)
         {
-            if (orbit == null || a == null || b == null) return;
+            if (orbit == null || a == null) return;
             orbit.enabled = true;
-            orbit.FrameActors(a, b);
+            // A solo speaker gets a medium shot of the player; pairs keep the two-shot.
+            if (b != null) orbit.FrameActors(a, b);
+            else orbit.FrameActor(a);
         }
 
         private void FaceDialogueParticipants(Transform other)
@@ -1132,7 +1180,12 @@ namespace FengChenInn
                 afterDialogue = null;
                 completed();
             }
-            else RenderLine();
+            else
+            {
+                // Reuse the prologue's paper turn; the closing line needs no page sound.
+                uiVictoryAudio.Page();
+                RenderLine();
+            }
         }
 
         private void RenderLine()
@@ -1287,7 +1340,7 @@ namespace FengChenInn
         private void BuildTitle()
         {
             var layer = CreateView(View.Title);
-            layer.gameObject.AddComponent<MainMenuV2>().Build(StartGame, OpenSettings, Quit);
+            layer.gameObject.AddComponent<MainMenuV2>().Build(BeginStoryIntro, OpenSettings, Quit);
             Label(layer, InnStoryScript.AICredit, 15, Muted, new Vector2(1, 0), new Vector2(-28, 14),
                 new Vector2(460, 24), TextAnchor.MiddleRight);
         }
@@ -1330,7 +1383,8 @@ namespace FengChenInn
             speaker = Label(frame, "", 23, Plum, TopLeft, new Vector2(30, -14), new Vector2(330, 38));
             dialogue = Label(frame, "", 25, Paper, TopLeft, new Vector2(30, -60), new Vector2(878, 89));
             pageCount = Label(frame, "", 16, Muted, BottomLeft, new Vector2(30, 16), new Vector2(110, 30));
-            Button(frame, "E  继续", new Vector2(1, 0), new Vector2(-28, 15), new Vector2(140, 36), AdvanceDialogue);
+            // The dialogue keeps its original look; only its hover sound stays muted.
+            Button(frame, "E  继续", new Vector2(1, 0), new Vector2(-28, 15), new Vector2(140, 36), AdvanceDialogue, false, false);
             Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(30, 10), new Vector2(520, 26));
         }
 
@@ -1520,31 +1574,40 @@ namespace FengChenInn
 
         private void BuildSettings()
         {
-            var frame = Panel(CreateView(View.Settings), "灯下整装", "设置", 640, 540);
+            var frame = Panel(CreateView(View.Settings), "灯下整装", "设置", 1160, 650);
             SettingLabel(frame, "总音量", -137);
             SliderRow(frame, -138, 0, 1, AudioListener.volume, value =>
             { AudioListener.volume = value; PlayerPrefs.SetFloat(Pref + "volume", value); });
-            SettingLabel(frame, "画质", -190);
-            var quality = Button(frame, "", TopLeft, new Vector2(274, -190), new Vector2(284, 38), () =>
+            SettingLabel(frame, "音乐音量", -190);
+            SliderRow(frame, -191, 0, 1, menuAudio.MusicVolume, menuAudio.SetMusicVolume);
+            SettingLabel(frame, "雨声音量", -243);
+            SliderRow(frame, -244, 0, 1, menuAudio.RainVolume, menuAudio.SetRainVolume);
+            SettingLabel(frame, "画质", -296);
+            var quality = Button(frame, "", TopLeft, new Vector2(274, -296), new Vector2(284, 38), () =>
             {
                 QualitySettings.SetQualityLevel((QualitySettings.GetQualityLevel() + 1) % QualitySettings.names.Length, true);
                 PlayerPrefs.SetInt(Pref + "quality", QualitySettings.GetQualityLevel());
                 UpdateQualityLabel();
             });
             qualityText = quality.GetComponentInChildren<Text>();
-            SettingLabel(frame, "分辨率", -243);
-            resolutionText = StepperRow(frame, -243, ResolutionLabel(ResolutionIndex()), PrevResolution, NextResolution);
-            SettingLabel(frame, "显示模式", -296);
-            var fullscreen = Button(frame, "", TopLeft, new Vector2(274, -296), new Vector2(284, 38), CycleDisplayMode);
+            SettingLabel(frame, "分辨率", -349);
+            resolutionText = StepperRow(frame, -349, ResolutionLabel(ResolutionIndex()), PrevResolution, NextResolution);
+            SettingLabel(frame, "显示模式", -402);
+            var fullscreen = Button(frame, "", TopLeft, new Vector2(274, -402), new Vector2(284, 38), CycleDisplayMode);
             fullscreenText = fullscreen.GetComponentInChildren<Text>();
             fullscreenText.text = FullscreenLabels[FullscreenIndex()];
             UpdateResolutionLabel();
-            SettingLabel(frame, "视角灵敏度", -349);
-            SliderRow(frame, -350, .04f, .32f, orbit != null ? orbit.sensitivity : .12f, value =>
+            SettingLabel(frame, "视角灵敏度", -455);
+            SliderRow(frame, -456, .04f, .32f, orbit != null ? orbit.sensitivity : .12f, value =>
             { if (orbit != null) orbit.sensitivity = value; PlayerPrefs.SetFloat(Pref + "sensitivity", value); });
-            SettingLabel(frame, "垂直视角", -402);
-            ToggleRow(frame, -402, orbit != null && orbit.invertY, "反转", "正常", value =>
+            SettingLabel(frame, "垂直视角", -508);
+            ToggleRow(frame, -508, orbit != null && orbit.invertY, "反转", "正常", value =>
             { if (orbit != null) orbit.invertY = value; PlayerPrefs.SetInt(Pref + "invert", value ? 1 : 0); });
+            Label(frame, "界面与结算", 23, Amber, TopLeft, new Vector2(616, -136), new Vector2(490, 38));
+            UiVolumeRow(frame, "悬停", -190, uiVictoryAudio.HoverVolume, uiVictoryAudio.SetHoverVolume);
+            UiVolumeRow(frame, "确认", -243, uiVictoryAudio.ConfirmVolume, uiVictoryAudio.SetConfirmVolume);
+            UiVolumeRow(frame, "翻页", -296, uiVictoryAudio.PageVolume, uiVictoryAudio.SetPageVolume);
+            UiVolumeRow(frame, "胜利音乐 B", -349, uiVictoryAudio.VictoryVolume, uiVictoryAudio.SetVictoryVolume);
             Button(frame, "返回", Bottom, new Vector2(0, 25), new Vector2(240, 44), CloseSettings, true);
         }
 
@@ -1609,6 +1672,22 @@ namespace FengChenInn
         private void SettingLabel(RectTransform frame, string label, float y) =>
             Label(frame, label, 22, Paper, TopLeft, new Vector2(39, y), new Vector2(196, 38));
 
+        private void UiVolumeRow(RectTransform frame, string label, float y, float initial, Action<float> changed)
+        {
+            Label(frame, label, 20, Paper, TopLeft, new Vector2(616, y), new Vector2(150, 38));
+            var holder = Place(frame, label + "音量", TopLeft, TopLeft, new Vector2(782, y), new Vector2(222, 38));
+            var slider = holder.gameObject.AddComponent<Slider>();
+            var track = Place(holder, "底轨", Center, Center, Vector2.zero, new Vector2(218, 6));
+            Paint(track, Line, true);
+            var slide = Fill(holder, "滑动区域");
+            slide.offsetMin = new Vector2(9, 0); slide.offsetMax = new Vector2(-9, 0);
+            var handle = Place(slide, "滑钮", Center, Center, Vector2.zero, new Vector2(18, 26));
+            slider.targetGraphic = Paint(handle, Amber, true); slider.handleRect = handle;
+            slider.minValue = 0; slider.maxValue = 1; slider.value = initial;
+            var valueText = Label(frame, SliderLabel(initial, 0, 1), 18, Muted, TopLeft, new Vector2(1018, y), new Vector2(65, 38), TextAnchor.MiddleRight);
+            slider.onValueChanged.AddListener(value => { changed(value); valueText.text = SliderLabel(value, 0, 1); });
+        }
+
         private void ToggleRow(RectTransform frame, float y, bool initial, string on, string off, Action<bool> changed)
         {
             bool value = initial;
@@ -1639,7 +1718,7 @@ namespace FengChenInn
 
         private static string SliderLabel(float value, float min, float max) => $"{Mathf.RoundToInt(Mathf.InverseLerp(min, max, value) * 100)}%";
 
-        private Button Button(RectTransform parent, string title, Vector2 anchor, Vector2 pos, Vector2 size, Action onClick, bool primary = false)
+        private Button Button(RectTransform parent, string title, Vector2 anchor, Vector2 pos, Vector2 size, Action onClick, bool primary = false, bool hoverSound = true)
         {
             var rect = Place(parent, title, anchor, anchor, pos, size);
             var button = rect.gameObject.AddComponent<Button>();
@@ -1655,6 +1734,7 @@ namespace FengChenInn
             };
             Rule(rect, TopLeft, Vector2.zero, new Vector2(size.x, 1));
             Label(rect, title, size.y < 42 ? 19 : 22, Paper, Center, Vector2.zero, size - new Vector2(8, 2), TextAnchor.MiddleCenter);
+            UiButtonSound.Bind(button, hoverSound);
             button.onClick.AddListener(() => onClick());
             return button;
         }

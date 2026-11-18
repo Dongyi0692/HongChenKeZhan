@@ -59,8 +59,9 @@ public sealed class MainMenuV2 : MonoBehaviour {
     void AddButton(int normal,int hover,float x,float y,float w,float h,Action action){
         var im=Art(normal,x,y,w,h);im.raycastTarget=true;
         var button=im.gameObject.AddComponent<Button>();button.targetGraphic=im;button.transition=Selectable.Transition.None;
+        UiButtonSound.Bind(button);
         var motion=im.gameObject.AddComponent<MenuButtonV2>();motion.normal=im.texture;motion.hover=Resources.Load<Texture2D>("MainMenuV2/asset_"+hover.ToString("00"));
-        button.onClick.AddListener(()=>{if(!leaving)StartCoroutine(Leave(action));});
+        button.onClick.AddListener(()=>{if(!leaving){StartCoroutine(Leave(action));}});
         var group=im.gameObject.AddComponent<CanvasGroup>();artwork.Add(group);delays.Add(1.0f+(normal-10)*.08f);
     }
     IEnumerator Leave(Action action){

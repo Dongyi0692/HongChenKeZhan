@@ -1,5 +1,6 @@
 # 红尘客栈：Codex 接手入口
 
+当前合并工作树为 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged`，分支 `integrate/stage12-audio-v6`，基于本地玩法快照 `709d2e9` 和队友交付 `ad92f44`。先读 `Docs/Delivery/2026-11-18/HANDOFF.md`、`README_开始试玩.md`、`ProjectSettings/ProjectVersion.txt`，再检查 Git 状态和 Unity 场景。交接文档所述的 GitHub 分支与音频检查是合并前记录。
 前门行为更新：从第一段开战到第三段获胜，`DuelEncounter` 通过 `HoldOpenForEncounter` 保持前门开启，覆盖战间对白、回援及失败重试。结束或重开后恢复近距离感应。下文“离开后关闭”仅适用于感应模式。
 
 2026-11-18 室内反馈修订：当前 Stage12 一楼使用 `Architecture Collision/Main hall floor` 连续碰撞，视觉木板保留，30 块板的独立 MeshCollider 已关闭。门槛、楼梯及后院碰撞保留。跑步姿态依据实际行进速度，主角和 NPC 的起停使用约 0.24 秒混合和起停阈值，慢帧也至少分六次推进。原场景和本轮两份动作脚本备份在 `Backups/2026-11-18_before_indoor_feedback`。验证详情见 README 的室内反馈记录。以下 v6 的“场景未改脏”描述的是上一轮测试结束时的状态。
@@ -41,15 +42,10 @@ v5室内AI `Logs/Stage12RescueAI_20261117_232834/report.json`：passedtrue、0�
 
 当前整合分支为 `integrate-stage12-story`，此前整合版已上传 GitHub：在现有 Stage12 上接入玩法分支、账本和三段流程。以根目录 `README.md` 与 `README_开始试玩.md` 的当前说明为准；下面及交付文档中“未合入玩法分支”描述的是原作者交付时状态。整合使用官方交付归档及经哈希核验的 LFS 资源，未执行交付分支的 Git 历史合并。最新独立版为 `Builds/2026-11-17_v3/Windows/HongChenKeZhan.exe`，完整 ZIP 在同级 v3 目录；上一个独立版为 `Builds/2026-11-17_v2/Windows/HongChenKeZhan.exe`，不含本轮玩法修复。发布包放 Releases，不提交整个 Builds。
 
-`Stage12Integration.apply` 是一次性迁移工具，已完成，不要重复执行。不要重新生成场景或启用旧 `InnStairTraversal`，Stage12 已有连续楼梯碰撞。人物/战斗动画资源沿用原玩法分支；对白单独锁定现有自然站姿。
-
-开始工作先读 `Docs/Delivery/2026-11-16/HANDOFF.md` 和 `ProjectSettings/ProjectVersion.txt`，再检查当前 Git 分支、未提交改动以及 Unity 实际打开的场景。
-
-- 正式名称是“红尘客栈”。历史命名空间 `FengChenInn`、资源名和 GUID 仍用于兼容，不要批量重命名。
-- 本次演示入口是 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`。不要把旧 `InnDuel.unity` 当成已完成的新版。
-- 第二版主菜单已经接入；保留 `MainMenuV2.cs`、`InnInterface.BuildTitle()` 接入和 `Resources/MainMenuV2/asset_00..15.png` 及其 `.meta`。
-- 模型、贴图、动画通过 Git LFS 保存；先确认拉取到真实二进制，再诊断 Unity 导入问题。
-- 编辑前保留已有修改。场景和二进制资源不要用单边覆盖来解决合并冲突；保留 `.meta` 的 GUID。
-- `combat-improvements` 是伙伴的独立玩法分支；本交付未合入它。整合时结合交付文档保留双方功能，并重新实测 Stage12。
-- `Assets/Editor` 的检查工具使用项目相对 `Temp` 目录；无需 Blender MCP，也无需原作者电脑上的 D 盘目录。
-- 当前交付只含 Unity 工程，不包含 Blender 源工程。不要把 Unity 验证结果描述成 Blender 源文件验证。
+- 正式名称是“红尘客栈”。历史命名空间 `FengChenInn`、资源名和 GUID 仍用于兼容，勿批量重命名。
+- 使用 Unity 6000.3.25f1；正式场景为 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`。不要把旧 `InnDuel.unity` 当成当前版本。
+- 用户的本版场景优化优先。旧 `Entrance exterior ground` 入口平台已移除，不要从旧分支、备份或恢复场景加回。场景冲突逐项核对，不要整场覆盖；保留 `.meta` GUID。
+- `Stage12Integration.apply` 已执行，勿重复；勿重新生成 Stage12 或启用旧 `InnStairTraversal`。保留平滑楼梯碰撞及现有角色、战斗、门和剧情交互。
+- 主菜单、序章、雨区、脚步、战斗、UI 和胜利 B 的现有接入及原始素材路径见新交接文件。不要用旧验证报告代替修改后的 Play Mode 验证。
+- Unity 模型、图片和音频使用 Git LFS；先拉取真实二进制再诊断导入。不要提交 `Library`、`Temp`、`Builds`、`Backups` 或 `Assets/_Recovery`。
+- 当前交付是 Unity 工程，不包含 Blender 源工程；不要把 Unity 验证描述成 Blender 源文件验证。

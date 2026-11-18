@@ -1,0 +1,164 @@
+{
+  "WetGround": {
+    "source": "553241__nachtmahrtv__wet-footsteps.wav",
+    "source_sha256": "2d81cbfe1c4f4a9c68a7069bf6b09a764f9c9cf2dfbaeaa1aacfdf9e44abb188",
+    "sample_rate": 44100,
+    "source_bits": 24,
+    "processing": "mono; DC removal; 45 Hz first-order high-pass; active-window RMS gain, peak ceiling -3.35 dBFS; 2 ms start / 35 ms end fades; PCM24",
+    "clips": [
+      {
+        "file": "WetGround_01.wav",
+        "start_seconds": 1.5058276643990929,
+        "end_seconds": 1.96,
+        "duration": 0.45417233560090703,
+        "gain_db": 19.64,
+        "peak_dbfs": -4.89,
+        "rms_dbfs": -29.67
+      },
+      {
+        "file": "WetGround_02.wav",
+        "start_seconds": 2.0498185941043086,
+        "end_seconds": 2.46,
+        "duration": 0.41018140589569163,
+        "gain_db": 19.96,
+        "peak_dbfs": -3.35,
+        "rms_dbfs": -31.76
+      },
+      {
+        "file": "WetGround_03.wav",
+        "start_seconds": 2.5418367346938777,
+        "end_seconds": 2.97,
+        "duration": 0.4281632653061225,
+        "gain_db": 24.24,
+        "peak_dbfs": -5.24,
+        "rms_dbfs": -28.93
+      },
+      {
+        "file": "WetGround_04.wav",
+        "start_seconds": 3.511836734693878,
+        "end_seconds": 3.99,
+        "duration": 0.47816326530612246,
+        "gain_db": 23.84,
+        "peak_dbfs": -4.07,
+        "rms_dbfs": -29.39
+      },
+      {
+        "file": "WetGround_05.wav",
+        "start_seconds": 4.55780045351474,
+        "end_seconds": 5.0,
+        "duration": 0.4421995464852608,
+        "gain_db": 22.03,
+        "peak_dbfs": -3.65,
+        "rms_dbfs": -30.04
+      },
+      {
+        "file": "WetGround_06.wav",
+        "start_seconds": 11.937913832199547,
+        "end_seconds": 12.52,
+        "duration": 0.5820861678004535,
+        "gain_db": 25.4,
+        "peak_dbfs": -4.1,
+        "rms_dbfs": -31.01
+      },
+      {
+        "file": "WetGround_07.wav",
+        "start_seconds": 12.627823129251702,
+        "end_seconds": 13.2,
+        "duration": 0.5721768707482994,
+        "gain_db": 19.64,
+        "peak_dbfs": -4.04,
+        "rms_dbfs": -31.31
+      },
+      {
+        "file": "WetGround_08.wav",
+        "start_seconds": 15.909795918367347,
+        "end_seconds": 16.45,
+        "duration": 0.5402040816326531,
+        "gain_db": 22.07,
+        "peak_dbfs": -3.35,
+        "rms_dbfs": -31.3
+      }
+    ]
+  },
+  "WoodFloor": {
+    "source": "footsteps-on-wooden-floor.aiff",
+    "source_sha256": "06f6e6ae540b7a0751a904d07ccb5d3b6fa8c1f0f1758c8c5a5c48b5e88cdf49",
+    "sample_rate": 48000,
+    "source_bits": 24,
+    "processing": "mono; DC removal; 45 Hz first-order high-pass; active-window RMS gain, peak ceiling -3.35 dBFS; 2 ms start / 35 ms end fades; PCM24",
+    "clips": [
+      {
+        "file": "WoodFloor_01.wav",
+        "start_seconds": 0.546,
+        "end_seconds": 1.04,
+        "duration": 0.494,
+        "gain_db": 23.9,
+        "peak_dbfs": -7.71,
+        "rms_dbfs": -29.56
+      },
+      {
+        "file": "WoodFloor_02.wav",
+        "start_seconds": 1.1620000000000001,
+        "end_seconds": 1.65,
+        "duration": 0.488,
+        "gain_db": 22.29,
+        "peak_dbfs": -7.55,
+        "rms_dbfs": -30.02
+      },
+      {
+        "file": "WoodFloor_03.wav",
+        "start_seconds": 1.734,
+        "end_seconds": 2.2,
+        "duration": 0.466,
+        "gain_db": 18.66,
+        "peak_dbfs": -7.6,
+        "rms_dbfs": -29.56
+      },
+      {
+        "file": "WoodFloor_04.wav",
+        "start_seconds": 2.298,
+        "end_seconds": 2.76,
+        "duration": 0.462,
+        "gain_db": 17.47,
+        "peak_dbfs": -7.61,
+        "rms_dbfs": -30.13
+      },
+      {
+        "file": "WoodFloor_05.wav",
+        "start_seconds": 2.8419999999999996,
+        "end_seconds": 3.32,
+        "duration": 0.478,
+        "gain_db": 19.21,
+        "peak_dbfs": -7.6,
+        "rms_dbfs": -30.24
+      },
+      {
+        "file": "WoodFloor_06.wav",
+        "start_seconds": 3.402,
+        "end_seconds": 3.87,
+        "duration": 0.468,
+        "gain_db": 19.79,
+        "peak_dbfs": -10.86,
+        "rms_dbfs": -28.61
+      },
+      {
+        "file": "WoodFloor_07.wav",
+        "start_seconds": 3.944,
+        "end_seconds": 4.44,
+        "duration": 0.496,
+        "gain_db": 20.4,
+        "peak_dbfs": -9.85,
+        "rms_dbfs": -29.94
+      },
+      {
+        "file": "WoodFloor_08.wav",
+        "start_seconds": 4.5,
+        "end_seconds": 5.0,
+        "duration": 0.5,
+        "gain_db": 27.62,
+        "peak_dbfs": -9.33,
+        "rms_dbfs": -28.21
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+PASS: Combat pool attached to existing Stage12
+PASS: 15 processed clips from all seven original recordings
+AUDIT Light length=1.533333 events=0
+AUDIT Heavy length=4.333333 events=0
+AUDIT Skill length=1.566667 events=0
+PASS: Prologue retains existing background music together with rain
+PASS: Rain continues through prologue without restarting
+PASS: Leaving prologue fades music in about two seconds and keeps rain
+PASS: Real controller started light attack
+ SOUND Swing LightSwing attackTime=0.244 t=3.065
+PASS: Attack animation completed
+PASS: Missed light attack plays one swing and no contact sound
+PASS: Real controller started light attack
+ SOUND Swing LightSwing attackTime=0.240 t=5.435
+ SOUND Hit Hit attackTime=0.409 t=5.603
+PASS: Attack animation completed
+PASS: Actual blade collision causes damage and exactly one impact
+PASS: Holding guard without contact stays silent
+PASS: Real controller started light attack
+ SOUND Swing LightSwing attackTime=0.241 t=8.016
+ SOUND Block Block attackTime=0.405 t=8.180
+PASS: Attack animation completed
+PASS: Successful frontal block plays block only, with no damage impact
+PASS: Real controller started heavy combo
+ SOUND Swing HeavySwing attackTime=0.222 t=10.384
+ SOUND Swing Combo_01 attackTime=0.974 t=11.136
+ SOUND Swing Combo_02 attackTime=1.678 t=11.840
+ SOUND Swing Combo_03 attackTime=2.511 t=12.673
+PASS: Attack animation completed
+PASS: Four-strike heavy combo plays four separate synchronized swings on a miss
+ SOUND Dodge Dodge attackTime=0.000 t=15.314
+PASS: Accepted dodge action triggers one boosted, trimmed sound
+PASS: Pause stops combat voices and cannot advance swing cues
+ SOUND Drop Drop_02 attackTime=0.000 t=16.560
+ SOUND Drop Drop_01 attackTime=0.000 t=17.960
+ SOUND Drop Drop_03 attackTime=0.000 t=19.380
+PASS: Real physics floor contacts choose complete drop variations once per object
+PASS: Concurrent combat source volume sum stays within budget: 0.680
+PASS: AudioSource output contains rendered audio samples: peak=0.15512
+PASS: No runtime errors during combat/prologue verification
+COMPLETE

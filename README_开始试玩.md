@@ -1,12 +1,12 @@
 # 红尘客栈 · 当前可编辑版试玩
 
-2026-11-18 编辑版 v6。此次只更新 Unity 工程，没有生成 exe、ZIP 或上传 GitHub。Builds 中的 v3 是旧试玩包，不包含 v4/v5/v6 修改。
+2026-11-18 本地共创合并版。当前工程包含 v6 战斗与流程、队友的序章和音频。队友的交接说明见 `Docs/Delivery/2026-11-18/HANDOFF.md`。
 
 ## 打开方式
 
-1. Unity Hub 添加 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_upload`（包含 Assets、Packages、ProjectSettings 的整个目录）。
+1. Unity Hub 添加 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged`（包含 Assets、Packages、ProjectSettings 的整个目录）。
 2. 使用 Unity 6.3 LTS，精确版本 `6000.3.25f1`。
-3. 打开 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`，点击 Play，再选“开始游戏”。必要时点击 Game 画面捕获鼠标。
+3. 打开 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`，点击 Play，再选“开始游戏”。可以阅读或跳过序章。必要时点击 Game 画面捕获鼠标。
 
 不要把此目录复制到另一个工程的 Assets 内；不要打开旧 InnDuel 或 ActionLab 场景。人物、建筑与动作资源仍在原工程中。
 

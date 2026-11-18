@@ -1,0 +1,38 @@
+PASS: Interface root found
+PASS: Gameplay view reached before the dialogue
+PASS: Plate reaches full opacity
+PASS: Plate ramps through an intermediate opacity; sample=0.82
+PASS: Name and body fade in on their own cue; sample=0.37
+PASS: Text still trails the plate halfway through; text=0.37
+PASS: Dialogue is built from real UGUI rects and TextMeshPro text
+PASS: TMP font rasterises Chinese glyphs (客, 雨)
+PASS: Plate is 23.8% of the 900 px reference height
+PASS: Lateral breathing room: 210 px per side at 1600 wide
+PASS: Plate keeps clear of the screen edge; y=40
+INFO: plate share of screen height: 1280x720=23.8%, 1600x900=23.8%, 1920x1080=23.8%, 2560x1440=23.8%
+PASS: Every common 16:9 size keeps the same proportion (Expand scaling)
+PASS: Speaker name comes from the story data: 驻守小兵
+PASS: Body text is the original line, unmodified
+PASS: Page counter starts at 01 / 04; got 01 / 04
+PASS: TMP laid out 18 glyphs in 1 line(s)
+PASS: Body copy is ivory
+PASS: Speaker label is warm gold
+PASS: Game view screenshot written: D:\下载\客栈马原\HongChenKeZhan-full\Logs\dialogue_ui_1920x1080.png
+INFO: E key advanced the line = True
+PASS: E advances exactly one line
+PASS: Page counter follows the advance; got 02 / 04
+PASS: Speaker swaps with the line: 红拂女
+PASS: Exactly one paper turn per advance; count=1
+PASS: No repeated page sound while the line sits idle
+PASS: No attack fires while the dialogue owns input
+PASS: Player input stays disabled during the dialogue
+PASS: World clock frozen during the dialogue
+PASS: Dialogue framing is active on the existing camera rig
+PASS: Plate survives one unhurried fade instead of vanishing
+PASS: Plate is switched off once the fade completes
+PASS: Dialogue returns to gameplay; view=Play
+PASS: World clock resumes after the dialogue
+PASS: Player input restored after the dialogue
+PASS: Third-person follow resumes after the dialogue
+INFO: screen 1920x1080 aspect=1.778
+COMPLETE
