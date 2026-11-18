@@ -18,6 +18,7 @@ namespace FengChenInn
         private Vector3 lastPosition, lastViewForward;
         private float distance, lookAngle, guardTime;
         private bool actionExecuted;
+        private int heavySteps;
 
         public void Begin(PrototypeFighter player, Camera camera)
         {
@@ -35,7 +36,8 @@ namespace FengChenInn
             0 => "WASD  移动并转身 · 实际走出一小段距离",
             1 => "移动鼠标  转动视角 · 看一眼四周",
             2 => "鼠标左键  轻击一次 · 等剑势收回",
-            3 => "鼠标右键  重击一次 · 等连招结束",
+            3 => fighter.useSequentialHeavy ? $"鼠标右键  每按一次重击一式（{heavySteps}/4）· 可穿插左键轻击"
+                : "鼠标右键  完整四式重击一次 · 等连招结束",
             4 => "按住 Q  格挡片刻 · 面向来招",
             5 => "Shift  闪避一次 · 消耗体力",
             6 => "Space  跳跃一次 · 落地后继续",
@@ -73,13 +75,19 @@ namespace FengChenInn
                 5 => CombatMotion.Dodge, 6 => CombatMotion.JumpStart, 7 => CombatMotion.Skill,
                 _ => CombatMotion.Idle
             };
-            if (StepIndex >= 2 && action == expected) actionExecuted = true;
+            if (StepIndex >= 2 && action == expected)
+            {
+                if (StepIndex == 3 && fighter.useSequentialHeavy)
+                { heavySteps = fighter.LastHeavyStep; actionExecuted = heavySteps >= 4; }
+                else actionExecuted = true;
+            }
         }
 
         private void ResetStep()
         {
             distance = lookAngle = guardTime = 0f;
             actionExecuted = false;
+            heavySteps = 0;
             lastPosition = fighter != null ? fighter.transform.position : Vector3.zero;
             lastViewForward = view != null ? view.transform.forward : Vector3.forward;
         }

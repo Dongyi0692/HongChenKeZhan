@@ -19,13 +19,17 @@ namespace FengChenInn
             get
             {
                 if (!Ready || currentSlot < 0 || !clips[currentSlot].IsValid()) return 0f;
-                float duration = MotionLength(CurrentMotion);
-                float time = (float)clips[currentSlot].GetTime() / Mathf.Max(.001f, duration);
+                float duration = rangeEnd > rangeStart ? rangeEnd - rangeStart : MotionLength(CurrentMotion);
+                float time = ((float)clips[currentSlot].GetTime() - rangeStart) / Mathf.Max(.001f, duration);
                 return IsLoop(CurrentMotion) ? Mathf.Repeat(time, 1f) : Mathf.Clamp01(time);
             }
         }
 
         private const int SlotCount = 4;
+        private const float StartStopFade = .24f;
+        private const float MinimumStartStopFrames = 6f;
+        private const float LocomotionStartSpeed = .16f;
+        private const float LocomotionStopSpeed = .08f;
         private PlayableGraph graph;
         private AnimationMixerPlayable mixer;
         private readonly AnimationClipPlayable[] clips = new AnimationClipPlayable[SlotCount];
@@ -33,7 +37,8 @@ namespace FengChenInn
         private readonly HashSet<CombatMotion> missingReported = new HashSet<CombatMotion>();
         private int currentSlot = -1;
         private float fadeClock, fadeDuration;
-        private bool bindingReported, guardReleasing;
+        private float rangeStart, rangeEnd;
+        private bool bindingReported, guardReleasing, blendingStartStop;
         private bool dialoguePoseLocked;
         private float impactPauseUntil;
         public bool IsDialoguePoseActive => dialoguePoseLocked;
@@ -82,7 +87,7 @@ namespace FengChenInn
             targetAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             graph = PlayableGraph.Create(name + " Aholo Animation");
             graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            mixer = AnimationMixerPlayable.Create(graph, SlotCount, true);
+            mixer = AnimationMixerPlayable.Create(graph, SlotCount);
             AnimationPlayableOutput.Create(graph, "Aholo pose", targetAnimator).SetSourcePlayable(mixer);
             graph.Play();
             Play(CombatMotion.ExplorationIdle, 0f);
@@ -121,6 +126,15 @@ namespace FengChenInn
         // instance of that same motion was interrupted before its final frame.
         public void Restart(CombatMotion motion, float fade = .12f, float speed = 1f)
             => PlayInternal(motion, fade, speed, true);
+
+        public void RestartRange(CombatMotion motion, float start, float end, float fade, float speed)
+        {
+            PlayInternal(motion, fade, speed, true);
+            if (!Ready || currentSlot < 0 || !clips[currentSlot].IsValid()) return;
+            rangeStart = Mathf.Clamp(start, 0f, MotionLength(motion));
+            rangeEnd = Mathf.Clamp(end, rangeStart + .001f, MotionLength(motion));
+            clips[currentSlot].SetTime(rangeStart);
+        }
 
         public bool ReleaseGuard(float speed = 1f)
         {
@@ -196,6 +210,16 @@ namespace FengChenInn
                 return;
             }
 
+            // A bounded landing/attack can still carry weight while fading
+            // out. Hold its actual exit pose before its range is replaced;
+            // otherwise that old port keeps playing past the selected range
+            // and can reintroduce the deep landing crouch during an idle fade.
+            if (rangeEnd > rangeStart && currentSlot >= 0 && clips[currentSlot].IsValid())
+            {
+                clips[currentSlot].SetTime(Mathf.Clamp((float)clips[currentSlot].GetTime(), rangeStart, rangeEnd));
+                clips[currentSlot].SetSpeed(0d);
+            }
+
             int next = -1;
             float lowestWeight = float.MaxValue;
             for (int i = 0; i < SlotCount; i++)
@@ -208,12 +232,15 @@ namespace FengChenInn
                 }
             }
             if (next < 0) next = 0;
+            blendingStartStop = fade > 0f && (IsTravelMotion(CurrentMotion) && IsStandingMotion(motion)
+                || IsStandingMotion(CurrentMotion) && IsTravelMotion(motion));
             if (clips[next].IsValid())
             {
                 mixer.DisconnectInput(next);
                 graph.DestroyPlayable(clips[next]);
             }
             clips[next] = AnimationClipPlayable.Create(graph, clip);
+            rangeStart = rangeEnd = 0f;
             clips[next].SetApplyFootIK(false);
             clips[next].SetApplyPlayableIK(false);
             clips[next].SetTime(0d);
@@ -224,9 +251,25 @@ namespace FengChenInn
             CurrentMotion = motion;
             guardReleasing = false;
             fadeClock = 0f;
-            fadeDuration = Mathf.Max(0f, fade);
-            if (fadeDuration <= 0f) ApplyWeights(1f);
+            fadeDuration = blendingStartStop ? Mathf.Max(fade, StartStopFade) : Mathf.Max(0f, fade);
+            // Connect can give a newly connected port a live weight before the
+            // next LateUpdate. Native Animator evaluation happens in between:
+            // leaving the old and new ports at 1 would add two humanoid hips
+            // translations for one rendered frame. Install the starting blend
+            // now, and renormalize after removing the reused port.
+            float sourceWeight = 0f;
+            for (int i = 0; i < SlotCount; i++)
+            {
+                if (i == next || !clips[i].IsValid()) fromWeights[i] = 0f;
+                else { fromWeights[i] = Mathf.Max(0f, fromWeights[i]); sourceWeight += fromWeights[i]; }
+            }
+            if (sourceWeight > .00001f)
+                for (int i = 0; i < SlotCount; i++) fromWeights[i] /= sourceWeight;
+            else fadeDuration = 0f;
+            ApplyWeights(fadeDuration <= 0f ? 1f : 0f);
         }
+
+        public bool HasTravelSpeed(float speed) => speed >= (IsTravelMotion(CurrentMotion) ? LocomotionStopSpeed : LocomotionStartSpeed);
 
         public void SetLocomotion(float speed, bool battle)
         {
@@ -237,7 +280,7 @@ namespace FengChenInn
                 && NormalizedTime < .999f) return;
             float threshold = motionSet.runTransitionSpeed;
             if (CurrentMotion == CombatMotion.Run) threshold -= .25f;
-            CombatMotion motion = speed < .08f ? (battle ? CombatMotion.Idle : CombatMotion.ExplorationIdle)
+            CombatMotion motion = !HasTravelSpeed(speed) ? (battle ? CombatMotion.Idle : CombatMotion.ExplorationIdle)
                 : speed >= threshold ? CombatMotion.Run : CombatMotion.Walk;
             float reference = motion == CombatMotion.Run ? motionSet.runReferenceSpeed : motionSet.walkReferenceSpeed;
             float rate = motion == CombatMotion.Idle || motion == CombatMotion.ExplorationIdle ? 1f
@@ -251,7 +294,10 @@ namespace FengChenInn
             if (IsImpactPaused) return;
             if (fadeDuration > 0f && fadeClock < fadeDuration)
             {
-                fadeClock = Mathf.Min(fadeDuration, fadeClock + Time.deltaTime);
+                // A slow render frame must not consume the entire start/stop blend.
+                // Attack and airborne timing still follow their original fades.
+                float elapsed = blendingStartStop ? Mathf.Min(Time.deltaTime, fadeDuration / MinimumStartStopFrames) : Time.deltaTime;
+                fadeClock = Mathf.Min(fadeDuration, fadeClock + elapsed);
                 ApplyWeights(Mathf.SmoothStep(0f, 1f, fadeClock / fadeDuration));
             }
             AnimationClipPlayable current = clips[currentSlot];
@@ -263,7 +309,7 @@ namespace FengChenInn
             }
             else
             {
-                double end = CurrentMotion == CombatMotion.Guard && !guardReleasing ? length * motionSet.guardHoldNormalized : length;
+                double end = rangeEnd > rangeStart ? rangeEnd : CurrentMotion == CombatMotion.Guard && !guardReleasing ? length * motionSet.guardHoldNormalized : length;
                 if (current.GetTime() >= end)
                 {
                     current.SetTime(end);
@@ -274,12 +320,22 @@ namespace FengChenInn
 
         private void ApplyWeights(float blend)
         {
+            blend = Mathf.Clamp01(blend);
+            float total = 0f;
             for (int i = 0; i < SlotCount; i++)
-                mixer.SetInputWeight(i, Mathf.Lerp(fromWeights[i], i == currentSlot ? 1f : 0f, blend));
+            {
+                float weight = clips[i].IsValid() ? Mathf.Max(0f, Mathf.Lerp(fromWeights[i], i == currentSlot ? 1f : 0f, blend)) : 0f;
+                mixer.SetInputWeight(i, weight);
+                total += weight;
+            }
+            if (total > .00001f)
+                for (int i = 0; i < SlotCount; i++) mixer.SetInputWeight(i, mixer.GetInputWeight(i) / total);
+            else if (currentSlot >= 0 && clips[currentSlot].IsValid()) mixer.SetInputWeight(currentSlot, 1f);
         }
 
-        private static bool IsLoop(CombatMotion motion) => motion == CombatMotion.Idle || motion == CombatMotion.ExplorationIdle
-            || motion == CombatMotion.Walk || motion == CombatMotion.Run || motion == CombatMotion.JumpLoop;
+        private static bool IsStandingMotion(CombatMotion motion) => motion == CombatMotion.Idle || motion == CombatMotion.ExplorationIdle;
+        private static bool IsTravelMotion(CombatMotion motion) => motion == CombatMotion.Walk || motion == CombatMotion.Run;
+        private static bool IsLoop(CombatMotion motion) => IsStandingMotion(motion) || IsTravelMotion(motion) || motion == CombatMotion.JumpLoop;
 
         private void ReleaseGraph()
         {

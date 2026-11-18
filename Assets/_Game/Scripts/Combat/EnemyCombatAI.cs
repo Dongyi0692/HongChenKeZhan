@@ -12,6 +12,8 @@ namespace FengChenInn
         [Header("Readable group combat")]
         public bool coordinateGruntAttacks = true;
         [Min(0f)] public float sharedAttackGap = .28f;
+        [Header("Respond to actual hits")]
+        [Min(0f)] public float retaliationDuration = 2f;
         [Header("Close-contact breathing room")]
         [Min(0f)] public float closeContactBuffer = .16f;
         [Range(.1f, .6f)] public float giveSpaceDistance = .4f;
@@ -28,6 +30,9 @@ namespace FengChenInn
         bool groundedFromGravity;
         int nextAttack;
         CombatActor openingTarget;
+        CombatActor exclusiveStoryTarget;
+        CombatActor retaliationTarget;
+        float retaliateUntil;
         CombatActor reservedTarget;
         bool givingSpace, spaceAttempted;
         CombatActor spaceTarget;
@@ -40,13 +45,43 @@ namespace FengChenInn
 
         void Awake() { Actor = GetComponent<CombatActor>(); motor = GetComponent<CharacterController>(); }
 
+        void OnEnable()
+        {
+            if (Actor == null) Actor = GetComponent<CombatActor>();
+            Actor.Damaged += RespondToDamage;
+        }
+
+        void RespondToDamage(CombatActor source, int damage)
+        {
+            if (damage <= 0 || !CombatEnabled || !CanRetaliateAgainst(source)) return;
+            ReleaseAttackTurn();
+            ResetSpaceYield();
+            openingTarget = null;
+            retaliationTarget = Target = source;
+            retaliateUntil = Time.time + retaliationDuration;
+            retargetClock = retaliationDuration;
+        }
+
+        bool CanRetaliateAgainst(CombatActor candidate)
+        {
+            if (candidate == null || exclusiveStoryTarget != null && candidate != exclusiveStoryTarget
+                || !candidate.isActiveAndEnabled || candidate.IsDefeated || candidate.ControlLocked
+                || Actor == null || !Actor.IsHostileTo(candidate)) return false;
+            Vector3 delta = candidate.transform.position - transform.position;
+            return delta.sqrMagnitude <= detectionRadius * detectionRadius
+                && Mathf.Abs(delta.y) <= 1.25f && Actor.HasLineOfSight(candidate);
+        }
+
         public void SetCombatEnabled(bool value)
         {
             ReleaseAttackTurn();
             if (Actor == null) Actor = GetComponent<CombatActor>();
             CombatEnabled = value;
+            exclusiveStoryTarget = null;
             Target = null;
             openingTarget = null;
+            retaliationTarget = null;
+            retaliateUntil = 0f;
             ResetSpaceYield();
             Actor.CancelAttack();
             Actor.Guarding = false;
@@ -59,6 +94,8 @@ namespace FengChenInn
             ReleaseAttackTurn();
             Target = null;
             openingTarget = null;
+            retaliationTarget = null;
+            retaliateUntil = 0f;
             ResetSpaceYield();
             Actor.CancelAttack();
             cooldown = .35f;
@@ -69,6 +106,15 @@ namespace FengChenInn
             openingTarget = actor != null && Actor.IsHostileTo(actor) && !actor.IsDefeated ? actor : null;
             Target = openingTarget;
             retargetClock = .75f;
+        }
+
+        public void SetExclusiveStoryTarget(CombatActor actor)
+        {
+            exclusiveStoryTarget = actor;
+            retaliationTarget = null;
+            openingTarget = actor;
+            Target = actor;
+            retargetClock = 0f;
         }
 
         public void ResetBrain()
@@ -119,7 +165,12 @@ namespace FengChenInn
             retargetClock -= dt;
             if (openingTarget != null && (!openingTarget.isActiveAndEnabled || openingTarget.IsDefeated || !Actor.IsHostileTo(openingTarget)))
                 openingTarget = null;
-            if (openingTarget != null) Target = openingTarget;
+            if (retaliationTarget != null && (Time.time >= retaliateUntil || !CanRetaliateAgainst(retaliationTarget)))
+                retaliationTarget = null;
+            if (exclusiveStoryTarget != null)
+                Target = exclusiveStoryTarget.isActiveAndEnabled && !exclusiveStoryTarget.IsDefeated ? exclusiveStoryTarget : null;
+            else if (retaliationTarget != null) Target = retaliationTarget;
+            else if (openingTarget != null) Target = openingTarget;
             else if (Target == null || !Target.isActiveAndEnabled || Target.IsDefeated || !Actor.IsHostileTo(Target) || retargetClock <= 0f)
             { SelectTarget(); retargetClock = .75f; }
             if (Target == null) { State = Behaviour.Waiting; SetLocomotion(0f); return; }
@@ -336,7 +387,13 @@ namespace FengChenInn
             reservedTarget = null;
         }
 
-        void OnDisable() => ReleaseAttackTurn();
+        void OnDisable()
+        {
+            ReleaseAttackTurn();
+            retaliationTarget = null;
+            retaliateUntil = 0f;
+            if (Actor != null) Actor.Damaged -= RespondToDamage;
+        }
         void OnDestroy()
         {
             ReleaseAttackTurn();

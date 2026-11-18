@@ -1442,6 +1442,11 @@ MonoBehaviour:
   distanceReturnSpeed: 3.2
   minimumProbeRadius: 0.18
   wallPadding: 0.04
+  preferredMinimumDistance: 1.15
+  obstructionTurnSpeed: 180
+  lockAcquireDistance: 8
+  lockReleaseDistance: 10
+  lockTurnSpeed: 240
   obstructionMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -3708,7 +3713,7 @@ Transform:
   m_GameObject: {fileID: 640664569}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.15000057, z: 0}
+  m_LocalPosition: {x: 0, y: 0.0918686, z: -0.00000047683716}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3731,9 +3736,9 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 12.000001, y: 0.30000114, z: 10}
+  m_Size: {x: 11.578335, y: 0.2, z: 9.6}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &648054939
 GameObject:
@@ -20039,6 +20044,11 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   defeatedGruntHideDelay: 4
+  perfectGuardWindow: 0.18
+  perfectGuardHalfAngle: 55
+  perfectGuardStagger: 0.55
+  guardRearmReleaseTime: 0.24
+  perfectGuardMinimumInterval: 0.35
 --- !u!114 &1272264605
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -20058,6 +20068,7 @@ MonoBehaviour:
   gruntVisualPrefab: {fileID: 8886418058196636582, guid: 9e7d0c3f3c8e8144f8a855ae6df6238f, type: 3}
   eliteMotions: {fileID: 11400000, guid: 6857e9504f535ee4bbcbf7a9d0608121, type: 2}
   gruntMotions: {fileID: 11400000, guid: 9869edb678de46f438aa94b32346278f, type: 2}
+  healthMultiplier: 1.5
   eliteMaxHealth: 180
   gruntMaxHealth: 55
   RescueEnemyCount: 5
@@ -20086,6 +20097,9 @@ MonoBehaviour:
     knockback: 0.14
     stagger: 0.24
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.13
       end: 0.3
@@ -20101,6 +20115,9 @@ MonoBehaviour:
     knockback: 0.28
     stagger: 0.24
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.3
       end: 0.53333336
@@ -20116,6 +20133,9 @@ MonoBehaviour:
     knockback: 0.28
     stagger: 0.24
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.2
       end: 0.43333334
@@ -20132,6 +20152,9 @@ MonoBehaviour:
     knockback: 0.14
     stagger: 0.24
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.13
       end: 0.3
@@ -20147,10 +20170,14 @@ MonoBehaviour:
     knockback: 0.28
     stagger: 0.24
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.3
       end: 0.53333336
       damageMultiplier: 1
+  reinforcementEntranceSpeed: 2.2
   eliteEntranceSpeed: 1.7
 --- !u!114 &1272264606
 MonoBehaviour:
@@ -20188,10 +20215,25 @@ MonoBehaviour:
   jumpHeight: 1.1
   gravity: -22
   turnSpeed: 900
+  maximumLocomotionTurnStep: 35
   guardMoveMultiplier: 0.35
   coyoteTime: 0.08
   inputBufferTime: 0.16
   landingBlendTime: 0.16
+  groundSnapDistance: 0.28
+  minimumFallTime: 0.18
+  minimumLandingDrop: 0.35
+  useLightLanding: 1
+  lightLandingClipSeconds: 0.1
+  stabilizeRunningSword: 1
+  runningHandCorrectionWeight: 0.55
+  runningPoseBlendTime: 0.2
+  fullSpeedRunPlayback: 0.82
+  runningHandPosition: {x: 0.38, y: 0.98, z: 0.15}
+  runningBladeDirection: {x: 0.3, y: -0.75, z: 0.58}
+  runningOffhandPosition: {x: -0.32, y: 0.9, z: 0.1}
+  runningOffhandWeight: 0.65
+  runningOffhandSway: 0.08
   maxStamina: 100
   runStaminaPerSecond: 16
   jumpStaminaCost: 18
@@ -20205,6 +20247,11 @@ MonoBehaviour:
   staminaRecoveryDelay: 0.8
   animationDriver: {fileID: 1272264603}
   useFullClipDurations: 1
+  useSequentialHeavy: 1
+  heavySequenceMemory: 2.2
+  playerAttackTempo: 1.12
+  responsiveRecoveryScale: 0.65
+  maximumActionBuffer: 0.75
   enableTargetAssist: 1
   targetAssistDistance: 2.5
   targetAssistHalfAngle: 65
@@ -20227,6 +20274,9 @@ MonoBehaviour:
     knockback: 0.14
     stagger: 0.22
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.3
       end: 0.53333336
@@ -20243,6 +20293,9 @@ MonoBehaviour:
     knockback: 0.35
     stagger: 0.42
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.3666667
       end: 0.5666667
@@ -20268,6 +20321,9 @@ MonoBehaviour:
     knockback: 0.27
     stagger: 0.32
     unblockable: 0
+    clipStart: 0
+    clipEnd: 0
+    blendIn: 0.1
     hitWindows:
     - start: 0.2
       end: 0.43333334
@@ -23063,6 +23119,8 @@ MonoBehaviour:
   visualSourceRoot: {fileID: 5312381283037386185}
   rebuildImportedDoorCollision: 1
   activationDistance: 3
+  releaseDistanceMargin: 0.45
+  closeDelay: 0.45
   rotationSpeed: 90
   openAngle: 135
 --- !u!4 &1648071276
@@ -75871,7 +75929,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -94872,7 +94930,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -106432,7 +106490,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -114828,7 +114886,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -119742,7 +119800,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -134905,7 +134963,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -140605,7 +140663,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -143120,7 +143178,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -144436,7 +144494,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -147652,7 +147710,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -152072,7 +152130,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -154032,7 +154090,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -154548,7 +154606,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -155111,7 +155169,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -156188,7 +156246,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -156447,7 +156505,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -159261,7 +159319,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -159386,7 +159444,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -160037,7 +160095,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -167965,7 +168023,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -168185,7 +168243,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -169772,7 +169830,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -170248,7 +170306,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -176172,7 +176230,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -177458,7 +177516,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -178895,7 +178953,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -178955,7 +179013,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -183210,7 +183268,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -184106,7 +184164,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
@@ -185238,7 +185296,7 @@ MeshCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30

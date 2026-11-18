@@ -8,7 +8,7 @@ namespace FengChenInn
     {
         public enum Phase { Waiting, Approach, Windup, Slash, Recover, Stagger, Victory, Defeat }
         public enum AttackKind { HighSlash, LowSweep }
-        public enum EncounterStage { Arrival, Tutorial, EliteReady, EliteDuel, EliteVictory, Rescue, Complete, Failed }
+        public enum EncounterStage { Arrival, Tutorial, EliteReady, EliteDuel, EliteVictory, Rescue, Complete, Failed, RescueCover }
         public const int PlayerMax = 100, OpponentMax = 90;
         public const float WindupTime = .58f, SlashTime = .20f, RecoveryTime = .68f;
         // Legacy serialized reference only. No procedural animation is invoked.
@@ -18,6 +18,7 @@ namespace FengChenInn
         public GameObject eliteVisualPrefab, gruntVisualPrefab;
         public AholoMotionSet eliteMotions, gruntMotions;
         [Header("Encounter balance")]
+        [Min(.1f)] public float healthMultiplier = 1.5f;
         [Min(1)] public int eliteMaxHealth = 180, gruntMaxHealth = 55;
         [Min(1)] public int RescueEnemyCount = 5;
         [Min(1)] public int eliteAllyMaxHealth = 600;
@@ -32,6 +33,10 @@ namespace FengChenInn
         [Tooltip("Optional exact reinforcement positions. Unassigned entries use the arrival formation.")]
         public Transform[] rescueSpawnAnchors = Array.Empty<Transform>();
         public CombatAttack[] eliteAttacks, gruntAttacks;
+        [Header("Reinforcements through the front door")]
+        [Min(.5f)] public float reinforcementEntranceSpeed = 2.2f;
+        public bool RescueEntranceInProgress { get; private set; }
+        public int RescueEnteredCount { get; private set; }
         [Header("Elite entrance")]
         [Min(.1f)] public float eliteEntranceSpeed = 1.7f;
         public bool EliteEntranceInProgress { get; private set; }
@@ -52,6 +57,7 @@ namespace FengChenInn
         public event Action<EncounterStage> StageChanged;
         public event Action<CombatActor> ActorSpawned;
         public bool IsCombatActive => combatRunning && (Stage == EncounterStage.Tutorial || Stage == EncounterStage.EliteDuel || Stage == EncounterStage.Rescue);
+        public bool RescueCoverActive => combatRunning && Stage == EncounterStage.RescueCover;
         public bool HasRequiredBindings => BindingProblem(PlayerActor) == null && BindingProblem(TutorialActor) == null && BindingProblem(EliteActor) == null;
         public string MissingBindingReason => BindingProblem(PlayerActor) ?? BindingProblem(TutorialActor) ?? BindingProblem(EliteActor) ?? "";
         public int RemainingEnemies
@@ -69,7 +75,7 @@ namespace FengChenInn
             get
             {
                 if (Stage == EncounterStage.Arrival || Stage == EncounterStage.Tutorial) return TutorialActor;
-                if (Stage != EncounterStage.Rescue && Stage != EncounterStage.Complete) return EliteActor;
+                if (Stage != EncounterStage.Rescue && Stage != EncounterStage.RescueCover && Stage != EncounterStage.Complete) return EliteActor;
                 CombatActor nearest = null;
                 float best = float.PositiveInfinity;
                 foreach (var actor in enemies)
@@ -113,6 +119,13 @@ namespace FengChenInn
         // Keep the same actors across retries: completed fights and ally allegiance
         // must not be reconstructed by replaying earlier story transitions.
         readonly List<BattleCheckpointActor> checkpoint = new();
+        readonly List<RescueEntry> rescueEntries = new();
+        sealed class RescueEntry
+        {
+            public CombatActor actor;
+            public float verticalSpeed, stalledFor;
+            public bool entered;
+        }
         sealed class BattleCheckpointActor
         {
             public CombatActor actor;
@@ -128,12 +141,14 @@ namespace FengChenInn
         Vector3 entranceWaypoint;
         float entranceMoveAt, entranceStartedAt, entranceStalledFor, entranceVerticalSpeed, eliteEntranceReadyAt;
         bool crossedEntrance;
+        float rescueEntryMoveAt;
         Transform spawnStaging;
         void Start() => Initialize();
         void Update()
         {
             if (Time.time >= feedbackUntil) Feedback = "";
             if (EliteEntranceInProgress && Time.deltaTime > 0f) UpdateEliteEntrance(Time.deltaTime);
+            if (RescueEntranceInProgress && Time.deltaTime > 0f) UpdateRescueEntrance(Time.deltaTime);
         }
         void Initialize()
         {
@@ -144,7 +159,7 @@ namespace FengChenInn
             if (entrance != null) entranceZ = entrance.transform.position.z;
             PlayerActor = GetComponent<CombatActor>();
             if (PlayerActor == null) PlayerActor = gameObject.AddComponent<CombatActor>();
-            PlayerActor.Configure(CombatRole.Player, CombatTeam.Player, Mathf.Max(PlayerMax, PlayerActor.MaxHealth));
+            PlayerActor.Configure(CombatRole.Player, CombatTeam.Player, ScaledHealth(Mathf.Max(PlayerMax, PlayerActor.MaxHealth)));
             PlayerActor.DisplayName = "红拂女";
             PlayerActor.Defeated += PlayerDefeated;
             PlayerActor.Damaged += PlayerDamaged;
@@ -157,6 +172,9 @@ namespace FengChenInn
             if (!initialized) { Initialize(); return; }
             StopCombat();
             checkpoint.Clear();
+            rescueEntries.Clear();
+            RescueEntranceInProgress = false;
+            RescueEnteredCount = 0;
             RetryStage = EncounterStage.Arrival;
             EliteEntranceInProgress = EliteEntranceComplete = EliteEntranceStoppedAtDoor = false;
             eliteEntranceReadyAt = 0f;
@@ -174,9 +192,8 @@ namespace FengChenInn
             TutorialSentryRevealed = TutorialInstructionsCompleted = false;
             Feedback = "";
             TutorialActor = SpawnInactive(CombatRole.Grunt, tutorialPosition, "驻守小兵");
-            EliteActor = SpawnInactive(CombatRole.Elite, eliteArrivalPosition, "追兵");
-            Stage = EncounterStage.Arrival;
-            StageChanged?.Invoke(Stage);
+            EliteActor = SpawnInactive(CombatRole.Elite, eliteArrivalPosition, "斗笠客");
+            SetStage(EncounterStage.Arrival);
         }
         public bool RevealTutorialSentry()
         {
@@ -318,14 +335,17 @@ namespace FengChenInn
             if (!eliteRestored)
             {
                 var controller = EliteActor.GetComponent<CharacterController>();
-                var facing = Quaternion.Euler(0f, 180f, 0f);
-                if (!ActorPlacement.TryPlace(controller, eliteGuardPosition, facing, entranceZ)
+                Vector3 inward = FrontDoorInward;
+                Vector3 hallPosition = FrontDoorPosition + inward * 3.6f + Vector3.Cross(Vector3.up, inward) * 1.3f;
+                hallPosition.y = eliteArrivalPosition.y;
+                var facing = Quaternion.LookRotation(-inward);
+                if (!ActorPlacement.TryPlace(controller, hallPosition, facing, entranceZ)
                     && !ActorPlacement.TryPlace(controller, EliteActor.transform.position, facing, entranceZ))
                 {
-                    Show("追兵站位被挡住");
+                    Show("斗笠客站位被挡住");
                     return false;
                 }
-                EliteActor.Configure(CombatRole.Elite, CombatTeam.Player, Mathf.Max(1, eliteAllyMaxHealth));
+                EliteActor.Configure(CombatRole.Elite, CombatTeam.Player, ScaledHealth(eliteAllyMaxHealth));
                 eliteRestored = true;
             }
             EliteActor.SetTeam(CombatTeam.Player);
@@ -338,16 +358,29 @@ namespace FengChenInn
         }
         public bool BeginRescueBattle()
         {
+            if (RescueCoverActive) return JoinRescueBattle();
+            return StartRescueBattle(false);
+        }
+
+        public bool BeginRescueCover() => StartRescueBattle(true);
+
+        bool StartRescueBattle(bool coverOnly)
+        {
             if (PlayerActor == null || PlayerActor.IsDefeated || !EliteVictoryAchieved || Stage != EncounterStage.EliteVictory) return false;
             if (!CheckBindings() || !MakeEliteAlly()) return false;
+            Vector3 door = FrontDoorPosition, inward = FrontDoorInward;
+            // The player walks out and returns under their own control. Starting
+            // the NPC cover skirmish must never pull them back into the hall.
+            rescueEntries.Clear();
             var reinforcements = new List<CombatActor>();
             for (int i = 0; i < Mathf.Max(1, RescueEnemyCount); i++)
             {
-                float side = i % 2 == 0 ? -1f : 1f;
-                Vector3 point = rescueSpawnAnchors != null && i < rescueSpawnAnchors.Length && rescueSpawnAnchors[i] != null
-                    ? rescueSpawnAnchors[i].position
-                    : rescueArrivalPosition + new Vector3(side * (.55f + (i / 2) * .6f), 0f, -(i / 2) * .8f);
+                // Ignore the legacy rear-yard anchors. A spaced single-file queue
+                // physically crosses the front threshold; nobody appears in the hall.
+                Vector3 point = door - inward * (1.8f + i * 1.15f);
+                point.y = eliteArrivalPosition.y;
                 var reinforcement = SpawnInactive(CombatRole.Grunt, point, "后续小兵 " + (i + 1));
+                reinforcement.transform.rotation = Quaternion.LookRotation(inward);
                 reinforcements.Add(reinforcement);
                 if (!TryRevealActor(reinforcement, point))
                 {
@@ -360,25 +393,118 @@ namespace FengChenInn
                     }
                     return false;
                 }
+                rescueEntries.Add(new RescueEntry { actor = reinforcement });
             }
             enemies.Clear();
             enemies.AddRange(reinforcements);
-            PlayerActor.RestoreHealthToFull();
+            if (!coverOnly) PlayerActor.RestoreHealthToFull();
+            PlayerActor.SetStorySurvivalFloor(coverOnly ? 1 : 0);
             SetRescueAllyProtection(true);
-            foreach (var reinforcement in reinforcements)
-            {
-                reinforcement.ControlLocked = false;
-                var brain = reinforcement.GetComponent<EnemyCombatAI>();
-                brain.SetCombatEnabled(true);
-                brain.PreferOpeningTarget(EliteActor);
-            }
             combatRunning = true;
             PlayerActor.ControlLocked = false;
             EliteActor.ControlLocked = false;
             EliteActor.GetComponent<EnemyCombatAI>().SetCombatEnabled(true);
+            foreach (var reinforcement in reinforcements)
+                reinforcement.SetStorySurvivalFloor(coverOnly ? 1 : 0);
+            StartRescueEntrance();
+            if (!coverOnly) CaptureBattleCheckpoint(EncounterStage.Rescue);
+            SetStage(coverOnly ? EncounterStage.RescueCover : EncounterStage.Rescue);
+            return true;
+        }
+
+        public bool JoinRescueBattle()
+        {
+            if (!RescueCoverActive || PlayerActor == null || PlayerActor.IsDefeated || EliteActor == null) return false;
+            // The UI checks the rear-door crossing. Also reject a remote join
+            // so a stale interaction cannot start combat from outside the inn.
+            Vector3 distance = PlayerActor.transform.position - EliteActor.transform.position;
+            if (Mathf.Abs(distance.y) > 1.5f || Vector3.ProjectOnPlane(distance, Vector3.up).sqrMagnitude > 25f) return false;
+            PlayerActor.CancelAttack();
+            PlayerActor.SetStorySurvivalFloor(0);
+            PlayerActor.RestoreHealthToFull();
+            foreach (var actor in enemies)
+            {
+                if (actor == null) continue;
+                actor.SetStorySurvivalFloor(0);
+                actor.GetComponent<EnemyCombatAI>()?.SetExclusiveStoryTarget(null);
+            }
+            SetRescueAllyProtection(true);
+            PlayerActor.ControlLocked = false;
             CaptureBattleCheckpoint(EncounterStage.Rescue);
             SetStage(EncounterStage.Rescue);
             return true;
+        }
+
+        int ScaledHealth(int baseline) => Mathf.Max(1, Mathf.CeilToInt(baseline * Mathf.Max(.1f, healthMultiplier)));
+        Vector3 FrontDoorPosition => entranceDoors != null ? entranceDoors.transform.position
+            : new Vector3(eliteArrivalPosition.x, eliteArrivalPosition.y, float.IsNaN(entranceZ) ? -4.96f : entranceZ);
+        Vector3 FrontDoorInward => eliteArrivalPosition.z >= FrontDoorPosition.z ? Vector3.forward : Vector3.back;
+
+        void StartRescueEntrance()
+        {
+            RescueEnteredCount = 0;
+            RescueEntranceInProgress = rescueEntries.Count > 0;
+            float wait = 0f;
+            if (entranceDoors != null)
+            {
+                entranceDoors.OpenRequested = true;
+                wait = Mathf.Clamp(entranceDoors.openAngle / Mathf.Max(10f, entranceDoors.rotationSpeed) + .15f, .2f, 3f);
+            }
+            rescueEntryMoveAt = Time.time + wait;
+            foreach (var entry in rescueEntries)
+            {
+                entry.entered = false;
+                entry.verticalSpeed = entry.stalledFor = 0f;
+                entry.actor.ControlLocked = true;
+                entry.actor.Invulnerable = true;
+                entry.actor.GetComponent<EnemyCombatAI>()?.SetCombatEnabled(false);
+            }
+        }
+
+        void UpdateRescueEntrance(float dt)
+        {
+            if (!combatRunning || Stage != EncounterStage.Rescue && Stage != EncounterStage.RescueCover) { RescueEntranceInProgress = false; return; }
+            if (entranceDoors != null) entranceDoors.OpenRequested = true;
+            Vector3 door = FrontDoorPosition, inward = FrontDoorInward;
+            for (int i = 0; i < rescueEntries.Count; i++)
+            {
+                var entry = rescueEntries[i];
+                if (entry.entered || entry.actor == null) continue;
+                var actor = entry.actor;
+                var motor = actor.GetComponent<CharacterController>();
+                if (Time.time < rescueEntryMoveAt + i * .18f) continue;
+                float insideDistance = Vector3.Dot(actor.transform.position - door, inward);
+                if (insideDistance >= 2.2f)
+                {
+                    entry.entered = true;
+                    RescueEnteredCount++;
+                    actor.Invulnerable = false;
+                    actor.ControlLocked = false;
+                    var brain = actor.GetComponent<EnemyCombatAI>();
+                    brain.SetCombatEnabled(true);
+                    brain.PreferOpeningTarget(EliteActor);
+                    if (RescueCoverActive) brain.SetExclusiveStoryTarget(EliteActor);
+                    continue;
+                }
+                if (motor == null || !motor.enabled) continue;
+                Vector3 target = door + inward * 2.45f;
+                Vector3 direction = Vector3.ProjectOnPlane(target - actor.transform.position, Vector3.up).normalized;
+                actor.transform.rotation = Quaternion.RotateTowards(actor.transform.rotation, Quaternion.LookRotation(direction), 360f * dt);
+                if (motor.isGrounded && entry.verticalSpeed < 0f) entry.verticalSpeed = -2f;
+                entry.verticalSpeed = Mathf.Max(-12f, entry.verticalSpeed - 22f * dt);
+                Vector3 before = actor.transform.position;
+                motor.Move(direction * (reinforcementEntranceSpeed * dt) + Vector3.up * (entry.verticalSpeed * dt));
+                float moved = Vector3.ProjectOnPlane(actor.transform.position - before, Vector3.up).magnitude;
+                actor.Animation?.SetLocomotion(moved / Mathf.Max(.001f, dt), false);
+                entry.stalledFor = moved < .1f * dt ? entry.stalledFor + dt : 0f;
+                // A player standing in the doorway must never be bypassed by teleporting.
+                if (entry.stalledFor > 2f) Show("来兵正在入门，请留出门口通道");
+            }
+            if (RescueEnteredCount == rescueEntries.Count)
+            {
+                RescueEntranceInProgress = false;
+                if (entranceDoors != null) entranceDoors.OpenRequested = false;
+            }
         }
 
         static bool IsBattleStage(EncounterStage stage) => stage == EncounterStage.Tutorial
@@ -461,6 +587,7 @@ namespace FengChenInn
             }
             Feedback = "";
             feedbackUntil = 0f;
+            if (RetryStage == EncounterStage.Rescue) StartRescueEntrance();
             SetStage(RetryStage);
             return true;
         }
@@ -533,12 +660,14 @@ namespace FengChenInn
         public void StopCombat()
         {
             combatRunning = false;
+            RescueEntranceInProgress = false;
             SetRescueAllyProtection(false);
-            if (PlayerActor != null) PlayerActor.CancelAttack();
+            if (PlayerActor != null) { PlayerActor.CancelAttack(); PlayerActor.SetStorySurvivalFloor(0); }
             foreach (var actor in spawned)
             {
                 if (actor == null) continue;
                 actor.CancelAttack();
+                actor.SetStorySurvivalFloor(0);
                 actor.ControlLocked = true;
                 actor.GetComponent<EnemyCombatAI>()?.SetCombatEnabled(false);
             }
@@ -605,7 +734,7 @@ namespace FengChenInn
                 if (visualPrefab != null) Instantiate(visualPrefab, body.transform);
             }
             actor.name = actor.DisplayName = displayName;
-            actor.Configure(role, CombatTeam.Enemy, elite ? eliteMaxHealth : gruntMaxHealth);
+            actor.Configure(role, CombatTeam.Enemy, ScaledHealth(elite ? eliteMaxHealth : gruntMaxHealth));
             var driver = actor.GetComponentInChildren<AholoAnimationDriver>(true);
             if (driver == null) driver = actor.gameObject.AddComponent<AholoAnimationDriver>();
             if (motions != null) driver.Configure(motions, actor.GetComponentInChildren<Animator>(true));
@@ -680,7 +809,17 @@ namespace FengChenInn
         void PlayerDamaged(CombatActor source, int amount) => Show("PLAYER HIT");
         void PlayerBlocked(CombatActor source) => Show("BLOCKED");
         void PlayerLanded(CombatActor target, int amount) => Show("LIGHT HIT");
-        void SetStage(EncounterStage value) { Stage = value; StageChanged?.Invoke(value); }
+        void SetStage(EncounterStage value)
+        {
+            Stage = value;
+            if (entranceDoors != null)
+            {
+                // Includes dialogue, cover and failure while the current battle can be retried.
+                entranceDoors.HoldOpenForEncounter = value is not (EncounterStage.Arrival or EncounterStage.Complete);
+                if (!entranceDoors.HoldOpenForEncounter) entranceDoors.OpenRequested = false;
+            }
+            StageChanged?.Invoke(value);
+        }
         void Show(string value) { Feedback = value; feedbackUntil = Time.time + .9f; }
         public void Begin()
         {

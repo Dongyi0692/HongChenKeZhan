@@ -23,6 +23,9 @@ namespace FengChenInn
         public float duration = 1f, speed = 1f, activeStart = .25f, activeEnd = .45f;
         public float range = 1.9f, knockback = .16f, stagger = .24f;
         public bool unblockable;
+        // Optional source-clip slice. Zero end preserves the original full clip.
+        public float clipStart, clipEnd;
+        public float blendIn = .10f;
         // Empty means one hit for the complete attack. Populate only after checking the clip.
         public CombatHitWindow[] hitWindows = Array.Empty<CombatHitWindow>();
     }
@@ -42,7 +45,34 @@ namespace FengChenInn
         public LayerMask collisionMask = ~0;
         [Tooltip("Only defeated grunts are hidden. Story elites are never removed.")]
         [Min(0f)] public float defeatedGruntHideDelay = 4f;
-        public bool Guarding { get; set; }
+        [Header("Timed sword defence")]
+        [Range(.05f, .3f)] public float perfectGuardWindow = .18f;
+        [Range(15f, 75f)] public float perfectGuardHalfAngle = 55f;
+        [Min(.1f)] public float perfectGuardStagger = .55f;
+        [Min(.1f)] public float guardRearmReleaseTime = .24f;
+        [Min(.1f)] public float perfectGuardMinimumInterval = .35f;
+        public bool LastBlockWasPerfect { get; private set; }
+        public bool Guarding
+        {
+            get => guarding;
+            set
+            {
+                if (guarding == value) return;
+                guarding = value;
+                if (value)
+                {
+                    guardRaisedAt = Time.time;
+                    perfectGuardArmed = role == CombatRole.Player
+                        && Time.time - guardLoweredAt >= guardRearmReleaseTime
+                        && Time.time - lastPerfectGuardAt >= perfectGuardMinimumInterval;
+                }
+                else
+                {
+                    guardLoweredAt = Time.time;
+                    perfectGuardArmed = false;
+                }
+            }
+        }
         public bool Invulnerable { get; set; }
         public bool ControlLocked { get; set; }
         public CombatRole Role => role;
@@ -51,6 +81,7 @@ namespace FengChenInn
         public int Health { get; private set; }
         // Temporary story protection, enabled by the encounter only during the rescue.
         public int GruntDamageHealthFloor { get; private set; }
+        public int StorySurvivalFloor { get; private set; }
         public bool IsDefeated => Health <= 0;
         public bool IsStunned => stunTime > 0f;
         public float StunRemaining => stunTime;
@@ -150,6 +181,8 @@ namespace FengChenInn
         Vector3 previousBase, previousTip;
         Quaternion attackFacing;
         bool hasPreviousBlade;
+        bool guarding, perfectGuardArmed;
+        float guardRaisedAt = -10f, guardLoweredAt = -10f, lastPerfectGuardAt = -10f;
         ImpactSlide impact;
         float defeatedFor;
         Renderer[] hiddenDefeatRenderers;
@@ -161,6 +194,7 @@ namespace FengChenInn
         {
             actors.Remove(this);
             GruntDamageHealthFloor = 0;
+            StorySurvivalFloor = 0;
             CancelAttack();
             if (Animation != null) Animation.ClearImpactPause();
         }
@@ -187,9 +221,13 @@ namespace FengChenInn
             CancelAttack();
             Health = health < 0 ? maxHealth : Mathf.Clamp(health, 1, maxHealth);
             GruntDamageHealthFloor = 0;
+            StorySurvivalFloor = 0;
             stunTime = 0f;
             impact = default;
             Guarding = Invulnerable = ControlLocked = false;
+            LastBlockWasPerfect = false;
+            guardRaisedAt = guardLoweredAt = lastPerfectGuardAt = -10f;
+            perfectGuardArmed = false;
             RefreshBindings();
             if (motor != null) motor.enabled = true;
         }
@@ -206,6 +244,10 @@ namespace FengChenInn
                 ? Mathf.Clamp(health, 0, maxHealth) : 0;
         }
 
+        // The cover skirmish must remain available until the player returns.
+        // Hits, interruption and knockback still work; JoinRescueBattle releases it.
+        public void SetStorySurvivalFloor(int health) => StorySurvivalFloor = Mathf.Clamp(health, 0, maxHealth);
+
         void RestoreDefeatVisuals()
         {
             if (hiddenDefeatRenderers != null)
@@ -213,6 +255,14 @@ namespace FengChenInn
                     if (hiddenDefeatRenderers[i] != null) hiddenDefeatRenderers[i].enabled = defeatRendererStates[i];
             hiddenDefeatRenderers = null;
             defeatRendererStates = null;
+        }
+
+        // Dialogue pauses game time before the normal delayed despawn can run.
+        // Only defeated grunts disappear; ResetActor restores their visuals.
+        public void HideDefeatedGruntForDialogue()
+        {
+            if (role == CombatRole.Grunt && IsDefeated)
+                UpdateDefeatVisuals(Mathf.Max(0f, defeatedGruntHideDelay));
         }
 
         void UpdateDefeatVisuals(float dt)
@@ -236,6 +286,7 @@ namespace FengChenInn
             CancelAttack();
             team = value;
             GruntDamageHealthFloor = 0;
+            StorySurvivalFloor = 0;
             Guarding = Invulnerable = false;
         }
 
@@ -250,7 +301,8 @@ namespace FengChenInn
             // A missing clip or weapon is a missing action, never a procedural replacement.
             if (Animation == null || !Animation.Ready || !Animation.HasMotion(definition.motion) || !HasWeapon) return false;
             attack = definition;
-            float playableDuration = Animation.MotionLength(definition.motion) / Mathf.Max(.05f, definition.speed);
+            float clipEnd = definition.clipEnd > definition.clipStart ? Mathf.Min(definition.clipEnd, Animation.MotionLength(definition.motion)) : Animation.MotionLength(definition.motion);
+            float playableDuration = (clipEnd - definition.clipStart) / Mathf.Max(.05f, definition.speed);
             attack.duration = Mathf.Min(Mathf.Max(.05f, definition.duration), playableDuration);
             attackClock = 0f;
             attackFacing = transform.rotation;
@@ -261,7 +313,7 @@ namespace FengChenInn
             hitTargets = new HashSet<CombatActor>[windows.Length];
             for (int i = 0; i < windows.Length; i++) hitTargets[i] = new HashSet<CombatActor>();
             Guarding = false;
-            Animation.Restart(definition.motion, .10f, Mathf.Max(.05f, definition.speed));
+            Animation.RestartRange(definition.motion, definition.clipStart, clipEnd, definition.blendIn, Mathf.Max(.05f, definition.speed));
             AttackStarted?.Invoke(definition);
             return true;
         }
@@ -283,14 +335,29 @@ namespace FengChenInn
             Vector3 toward = source != null ? Vector3.ProjectOnPlane(source.transform.position - transform.position, Vector3.up) : transform.forward;
             if (!unblockable && Guarding && (toward.sqrMagnitude < .001f || Vector3.Angle(transform.forward, toward) <= 75f))
             {
+                // A held guard is still ordinary defence. Timing rewards one
+                // deliberate raise, not every strike in a combo or rapid Q spam.
+                LastBlockWasPerfect = role == CombatRole.Player && perfectGuardArmed
+                    && source != null && source.IsAttacking
+                    && Time.time - guardRaisedAt <= perfectGuardWindow
+                    && Time.time - lastPerfectGuardAt >= perfectGuardMinimumInterval
+                    && (toward.sqrMagnitude < .001f || Vector3.Angle(transform.forward, toward) <= perfectGuardHalfAngle);
+                perfectGuardArmed = false;
+                bool perfectBlock = LastBlockWasPerfect;
+                if (perfectBlock) lastPerfectGuardAt = Time.time;
                 impact.Start(-toward, Mathf.Min(.04f, knockback));
+                // The defender reads the incoming move here to price its guard
+                // stamina (heavy hits cost more). Preserve that move through
+                // the event, then cancel it before this sweep can continue.
                 Blocked?.Invoke(source);
+                if (perfectBlock) source.ReceiveParry(this, perfectGuardStagger);
                 source?.AttackBlocked?.Invoke(this);
-                PauseContact(source, .025f);
+                PauseContact(source, perfectBlock ? .06f : .025f);
                 return true;
             }
             int healthFloor = role == CombatRole.Elite && team == CombatTeam.Player && source != null
                 && source.Role == CombatRole.Grunt && IsHostileTo(source) ? GruntDamageHealthFloor : 0;
+            healthFloor = Mathf.Max(healthFloor, StorySurvivalFloor);
             int dealt = Mathf.Min(Mathf.Max(0, Health - healthFloor), amount);
             Health -= dealt;
             CancelAttack();
@@ -317,6 +384,19 @@ namespace FengChenInn
                 Defeated?.Invoke(this);
             }
             return true;
+        }
+
+        void ReceiveParry(CombatActor defender, float stagger)
+        {
+            if (IsDefeated || ControlLocked || defender == null || !IsHostileTo(defender)) return;
+            CancelAttack();
+            Guarding = false;
+            stunTime = Mathf.Max(stunTime, stagger);
+            Vector3 away = Vector3.ProjectOnPlane(transform.position - defender.transform.position, Vector3.up);
+            impact.Start(away, .12f);
+            // Use the existing recoil clip; no replacement skeleton or new move.
+            if (Animation != null && Animation.Ready && Animation.HasMotion(CombatMotion.Hit))
+                Animation.Restart(CombatMotion.Hit, .06f);
         }
 
         void PauseContact(CombatActor source, float duration)
@@ -349,8 +429,9 @@ namespace FengChenInn
                 CancelAttack();
                 return;
             }
-            float finishAt = Mathf.Min(current.duration, Animation.MotionLength(current.motion) / speed);
-            float end = Mathf.Min(finishAt, Mathf.Max(before, clipTime / speed));
+            float sourceEnd = current.clipEnd > current.clipStart ? current.clipEnd : Animation.MotionLength(current.motion);
+            float finishAt = Mathf.Min(current.duration, (sourceEnd - current.clipStart) / speed);
+            float end = Mathf.Min(finishAt, Mathf.Max(before, (clipTime - current.clipStart) / speed));
             if (end <= before)
             {
                 if (before >= finishAt) CancelAttack();
@@ -369,9 +450,9 @@ namespace FengChenInn
                 float previousClock = attackClock;
                 attackClock = Mathf.Lerp(before, end, (float)pose / poses);
                 if (motor != null && motor.enabled && Animation.motionSet != null &&
-                    Animation.motionSet.TryGetRootDelta(current.motion, previousClock * speed, attackClock * speed, out Vector3 travel))
+                    Animation.motionSet.TryGetRootDelta(current.motion, current.clipStart + previousClock * speed, current.clipStart + attackClock * speed, out Vector3 travel))
                     motor.Move(attackFacing * new Vector3(travel.x, 0f, travel.z));
-                if (activeInterval) Animation.SampleMotionPose(current.motion, attackClock * speed);
+                if (activeInterval) Animation.SampleMotionPose(current.motion, current.clipStart + attackClock * speed);
                 BladeSegment(out Vector3 from, out Vector3 to);
                 AttackPoseSampled?.Invoke(current.motion, previousClock, attackClock, from, to);
                 int samples = hasPreviousBlade ? Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(
@@ -430,6 +511,9 @@ namespace FengChenInn
                 // Evading also consumes this attack segment: it cannot hit again later in the same sweep.
                 hits.Add(victim);
                 victim.ReceiveDamage(this, Mathf.Max(1, Mathf.RoundToInt(current.damage * window.damageMultiplier)), current.knockback, current.stagger, current.unblockable);
+                // A precise defence cancels this very sweep immediately, so it
+                // cannot continue damaging another actor in the overlap list.
+                if (attack != current) return;
             }
         }
 

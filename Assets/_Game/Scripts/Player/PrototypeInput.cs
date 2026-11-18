@@ -9,6 +9,7 @@ namespace FengChenInn
     {
         private PrototypeFighter fighter;
         private DuelEncounter duel;
+        private OrbitCamera orbit;
         public bool InterfaceControlsDuel { get; set; }
         public bool StoryAllowsCombat { get; set; } = true;
         private void Awake()
@@ -35,6 +36,12 @@ namespace FengChenInn
             fighter.RunRequested = fighter.MoveInput.sqrMagnitude > .001f;
             fighter.CrouchRequested = false;
             fighter.GuardRequested = StoryAllowsCombat && keys.qKey.isPressed;
+            if (orbit == null && Camera.main != null) orbit = Camera.main.GetComponent<OrbitCamera>();
+            if (StoryAllowsCombat && orbit != null)
+            {
+                if (mouse != null && mouse.middleButton.wasPressedThisFrame) orbit.ToggleTargetLock();
+                else if (keys.tabKey.wasPressedThisFrame) orbit.CycleTargetLock();
+            }
             if (!InterfaceControlsDuel && keys.rKey.wasPressedThisFrame)
             {
                 fighter.ResetPose();

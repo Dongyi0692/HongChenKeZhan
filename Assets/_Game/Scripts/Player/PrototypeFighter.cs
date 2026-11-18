@@ -23,10 +23,29 @@ namespace FengChenInn
         public float jumpHeight = 1.1f;
         public float gravity = -22f;
         public float turnSpeed = 900f;
+        [Tooltip("Limit a single rendered turn during a slow frame; input movement remains immediate.")]
+        [Range(15f, 60f)] public float maximumLocomotionTurnStep = 35f;
         [Range(0f, 1f)] public float guardMoveMultiplier = .35f;
         [Range(0f, .3f)] public float coyoteTime = .08f;
         [Range(0f, .3f)] public float inputBufferTime = .16f;
         [Range(0f, .4f)] public float landingBlendTime = .16f;
+        [Header("Uneven ground")]
+        [Range(0f, .4f)] public float groundSnapDistance = .28f;
+        [Range(.05f, .4f)] public float minimumFallTime = .18f;
+        [Min(.1f)] public float minimumLandingDrop = .35f;
+        [Tooltip("Use the shallow contact part of the existing landing clip instead of its deep crouch.")]
+        public bool useLightLanding = true;
+        [Range(.06f, .2f)] public float lightLandingClipSeconds = .10f;
+        [Header("Running sword carry")]
+        public bool stabilizeRunningSword = true;
+        [Range(0f, .8f)] public float runningHandCorrectionWeight = .55f;
+        [Range(.1f, .4f)] public float runningPoseBlendTime = .20f;
+        [Range(.5f, 1.1f)] public float fullSpeedRunPlayback = .82f;
+        public Vector3 runningHandPosition = new Vector3(.38f, .98f, .15f);
+        public Vector3 runningBladeDirection = new Vector3(.30f, -.75f, .58f);
+        public Vector3 runningOffhandPosition = new Vector3(-.32f, .90f, .10f);
+        [Range(0f, .65f)] public float runningOffhandWeight = .65f;
+        [Range(0f, .15f)] public float runningOffhandSway = .08f;
         [Header("Stamina")]
         [Min(1f)] public float maxStamina = 100f;
         // Retained for serialized compatibility with older scenes; running is free.
@@ -44,6 +63,16 @@ namespace FengChenInn
         public AholoAnimationDriver animationDriver;
         [Tooltip("Keep the whole clip. Mark damage windows in seconds after previewing its sword path.")]
         public bool useFullClipDurations = true;
+        [Header("Optional sequential heavy attacks — disable only this to restore the full combo")]
+        public bool useSequentialHeavy = true;
+        [Range(.5f, 5f)] public float heavySequenceMemory = 2.2f;
+        [Range(1f, 1.4f)] public float playerAttackTempo = 1.12f;
+        [Range(.3f, 1f)] public float responsiveRecoveryScale = .65f;
+        [Range(.2f, 1f)] public float maximumActionBuffer = .75f;
+        public int LastHeavyStep { get; private set; }
+        public int NextHeavyStep => heavySequence.NextIndex + 1;
+        readonly HeavyStrikeSequence heavySequence = new HeavyStrikeSequence();
+        CombatActor previousLockedTarget;
         [Header("Attack direction assistance")]
         public bool enableTargetAssist = true;
         [Min(.1f)] public float targetAssistDistance = 2.5f;
@@ -73,7 +102,7 @@ namespace FengChenInn
             motion = CombatMotion.Skill, damage = 26, duration = 1.2f,
             activeStart = .35f, activeEnd = .62f, range = 2f, knockback = .27f, stagger = .32f
         };
-        // Legacy serialized field; existing scenes may retain a value, but F has no cooldown.
+        // Legacy serialized field; existing scenes may retain a value, but the skill has no cooldown.
         [HideInInspector] public float skillCooldown;
         [Min(0f)] public float skillTravelDistance = 2.4f;
         [Range(0f, 1f)] public float skillTravelStart = .05f;
@@ -124,7 +153,7 @@ namespace FengChenInn
             && IsMotionAvailable(CombatMotion.JumpLoop) && IsMotionAvailable(CombatMotion.JumpLand);
         public string Status => actor != null && actor.IsDefeated ? "Defeated" : dialoguePoseLocked ? "Idle" : MovementLocked ? "Stagger"
             : State != ActionState.Ready ? State.ToString() : !IsGrounded ? "Jump" : IsGuarding ? "Guard"
-            : IsRunning ? "Run" : planarVelocity.sqrMagnitude > .02f ? "Walk" : "Idle";
+            : IsRunning ? "Run" : "Idle";
         public int LightAttackCount { get; private set; }
         public int HeavyAttackCount { get; private set; }
         public int JumpCount { get; private set; }
@@ -152,6 +181,9 @@ namespace FengChenInn
         private float verticalVelocity, actionTime, lastGroundedAt = -10f, jumpedAt = -10f;
         private float landingUntil, lastStaminaUseAt = -10f;
         private bool wasGrounded, wasGuarding, guardExhausted, groundedFromMovement;
+        private bool intentionalJump;
+        private float airborneTime, airbornePeak;
+        private readonly RaycastHit[] groundHits = new RaycastHit[24];
         private bool dialoguePoseLocked;
         private BufferedAction queuedAction;
         private float queuedUntil;
@@ -181,6 +213,7 @@ namespace FengChenInn
         }
         private void OnDestroy()
         {
+            RestoreRunningSwordPose();
             RestoreLegacyDodgePose();
             if (subscribedActor != null) { subscribedActor.Damaged -= OnDamaged; subscribedActor.Blocked -= OnBlocked; }
         }
@@ -226,8 +259,139 @@ namespace FengChenInn
             dodgePoseApplied = false;
         }
 
+        private Transform carryUpper, carryLower, carryHand, carryChest;
+        private Vector3 carryChestReference;
+        private Transform offhandUpper, offhandLower, offhandHand;
+        private Animator carryAnimator;
+        private Quaternion carryUpperBase, carryLowerBase, carryHandBase;
+        private Quaternion offhandUpperBase, offhandLowerBase;
+        private bool carryPoseApplied;
+        private bool offhandPoseApplied;
+        private float carryWeight;
+
+        private void RestoreRunningSwordPose()
+        {
+            if (carryPoseApplied)
+            {
+                if (carryUpper != null) carryUpper.localRotation = carryUpperBase;
+                if (carryLower != null) carryLower.localRotation = carryLowerBase;
+                if (carryHand != null) carryHand.localRotation = carryHandBase;
+                carryPoseApplied = false;
+            }
+            if (offhandPoseApplied)
+            {
+                if (offhandUpper != null) offhandUpper.localRotation = offhandUpperBase;
+                if (offhandLower != null) offhandLower.localRotation = offhandLowerBase;
+                offhandPoseApplied = false;
+            }
+        }
+
+        // Preserve the source run's shoulder/elbow counter-motion. The armed
+        // hand softly follows the torso rather than being pinned to the root.
+        // The socket remains attached to the hand, and attacks use untouched clips.
+        private void ApplyRunningSwordPose()
+        {
+            bool canCorrect = stabilizeRunningSword && !dialoguePoseLocked && !MovementLocked
+                && State == ActionState.Ready && animationDriver != null && animationDriver.Ready
+                && actor != null && !actor.IsAttacking && actor.WeaponRoot != null && actor.BladeBase != null && actor.BladeTip != null;
+            bool running = canCorrect && animationDriver.CurrentMotion == CombatMotion.Run && IsRunning;
+            // Do not modify combat, guard or dodge poses. Ordinary stopping and
+            // jumping retain a short fade instead of dropping the correction.
+            bool ordinaryExit = canCorrect && (animationDriver.CurrentMotion == CombatMotion.ExplorationIdle
+                || animationDriver.CurrentMotion == CombatMotion.Idle || animationDriver.CurrentMotion == CombatMotion.JumpStart
+                || animationDriver.CurrentMotion == CombatMotion.JumpLoop || animationDriver.CurrentMotion == CombatMotion.JumpLand);
+            if (!running && !ordinaryExit) { carryWeight = 0f; return; }
+            carryWeight = Mathf.MoveTowards(carryWeight, running ? 1f : 0f,
+                Mathf.Min(Time.deltaTime / Mathf.Max(.1f, runningPoseBlendTime), .25f));
+            if (carryWeight <= 0f) return;
+            Animator animator = animationDriver.targetAnimator;
+            if (animator == null || !animator.isHuman || animator.avatar == null || !animator.avatar.isValid) return;
+            if (carryAnimator != animator || carryUpper == null || carryLower == null || carryHand == null)
+            {
+                carryAnimator = animator;
+                carryUpper = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+                carryLower = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+                carryHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+                offhandUpper = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+                offhandLower = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+                offhandHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+                carryChest = animator.GetBoneTransform(HumanBodyBones.UpperChest)
+                    ?? animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine);
+                carryChestReference = carryChest != null ? transform.InverseTransformPoint(carryChest.position) : Vector3.zero;
+            }
+            if (carryUpper == null || carryLower == null || carryHand == null || !actor.WeaponRoot.IsChildOf(carryHand)) return;
+            float upperLength = Vector3.Distance(carryUpper.position, carryLower.position);
+            float lowerLength = Vector3.Distance(carryLower.position, carryHand.position);
+            if (upperLength < .01f || lowerLength < .01f) return;
+            carryUpperBase = carryUpper.localRotation;
+            carryLowerBase = carryLower.localRotation;
+            carryHandBase = carryHand.localRotation;
+            carryPoseApplied = true;
+            Vector3 shoulder = carryUpper.position;
+            Vector3 chestDelta = carryChest != null ? carryChest.position - transform.TransformPoint(carryChestReference) : Vector3.zero;
+            Vector3 anchor = transform.TransformPoint(runningHandPosition) + chestDelta;
+            Vector3 target = Vector3.Lerp(carryHand.position, anchor, .65f);
+            Vector3 toward = target - shoulder;
+            float distance = Mathf.Clamp(toward.magnitude, Mathf.Abs(upperLength - lowerLength) + .01f,
+                upperLength + lowerLength - .005f);
+            Vector3 axis = toward.normalized;
+            target = shoulder + axis * distance;
+            Vector3 bend = Vector3.ProjectOnPlane(carryLower.position - shoulder, axis).normalized;
+            if (bend.sqrMagnitude < .0001f) bend = Vector3.ProjectOnPlane(transform.right, axis).normalized;
+            float along = (upperLength * upperLength + distance * distance - lowerLength * lowerLength) / (2f * distance);
+            Vector3 elbow = shoulder + axis * along + bend * Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
+            carryUpper.rotation = Quaternion.FromToRotation(carryLower.position - shoulder, elbow - shoulder) * carryUpper.rotation;
+            carryLower.rotation = Quaternion.FromToRotation(carryHand.position - carryLower.position, target - carryLower.position) * carryLower.rotation;
+            float armBlend = Mathf.Clamp01(runningHandCorrectionWeight) * carryWeight;
+            Quaternion softUpper = Quaternion.RotateTowards(carryUpperBase, carryUpper.localRotation, 35f);
+            Quaternion softLower = Quaternion.RotateTowards(carryLowerBase, carryLower.localRotation, 45f);
+            carryUpper.localRotation = Quaternion.Slerp(carryUpperBase, softUpper, armBlend);
+            carryLower.localRotation = Quaternion.Slerp(carryLowerBase, softLower, armBlend);
+            Vector3 blade = actor.BladeTip.position - actor.BladeBase.position;
+            if (blade.sqrMagnitude > .0001f && runningBladeDirection.sqrMagnitude > .0001f)
+                carryHand.rotation = Quaternion.FromToRotation(blade, transform.TransformDirection(runningBladeDirection)) * carryHand.rotation;
+            carryHand.localRotation = Quaternion.Slerp(carryHandBase, carryHand.localRotation, .85f * carryWeight);
+            ApplyRunningOffhandPose();
+        }
+
+        private void ApplyRunningOffhandPose()
+        {
+            // The free arm keeps most of the source counter-swing. A small
+            // correction is enough to avoid the old wide raised-elbow posture.
+            float blend = Mathf.Clamp(runningOffhandWeight, 0f, .22f) * carryWeight;
+            if (blend <= 0f || offhandUpper == null || offhandLower == null || offhandHand == null) return;
+            Vector3 shoulder = offhandUpper.position;
+            float upperLength = Vector3.Distance(shoulder, offhandLower.position);
+            float lowerLength = Vector3.Distance(offhandLower.position, offhandHand.position);
+            if (upperLength < .01f || lowerLength < .01f) return;
+            // Follow the actual run cycle, leaving some of its natural counter-swing.
+            // This changes rotations only; bone lengths, torso and attack clips stay intact.
+            Vector3 localTarget = runningOffhandPosition;
+            localTarget.z += Mathf.Sin(animationDriver.NormalizedTime * Mathf.PI * 2f) * runningOffhandSway;
+            Vector3 chestDelta = carryChest != null ? carryChest.position - transform.TransformPoint(carryChestReference) : Vector3.zero;
+            Vector3 toward = Vector3.Lerp(offhandHand.position, transform.TransformPoint(localTarget) + chestDelta, .65f) - shoulder;
+            if (toward.sqrMagnitude < .0001f) return;
+            float distance = Mathf.Clamp(toward.magnitude, Mathf.Abs(upperLength - lowerLength) + .005f,
+                upperLength + lowerLength - .005f);
+            Vector3 axis = toward.normalized;
+            Vector3 target = shoulder + axis * distance;
+            Vector3 bend = Vector3.ProjectOnPlane(offhandLower.position - shoulder, axis).normalized;
+            if (bend.sqrMagnitude < .0001f) bend = Vector3.ProjectOnPlane(-transform.right, axis).normalized;
+            if (bend.sqrMagnitude < .0001f) return;
+            float along = (upperLength * upperLength + distance * distance - lowerLength * lowerLength) / (2f * distance);
+            Vector3 elbow = shoulder + axis * along + bend * Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
+            offhandUpperBase = offhandUpper.localRotation;
+            offhandLowerBase = offhandLower.localRotation;
+            offhandPoseApplied = true;
+            offhandUpper.rotation = Quaternion.FromToRotation(offhandLower.position - shoulder, elbow - shoulder) * offhandUpper.rotation;
+            offhandLower.rotation = Quaternion.FromToRotation(offhandHand.position - offhandLower.position, target - offhandLower.position) * offhandLower.rotation;
+            offhandUpper.localRotation = Quaternion.Slerp(offhandUpperBase, offhandUpper.localRotation, blend);
+            offhandLower.localRotation = Quaternion.Slerp(offhandLowerBase, offhandLower.localRotation, blend);
+        }
+
         private void LateUpdate()
         {
+            ApplyRunningSwordPose();
             if (dialoguePoseLocked || State != ActionState.Dodge || animationDriver == null || animationDriver.HasMotion(CombatMotion.Dodge)
                 || !ResolveLegacyDodgeBones()) return;
             float dive = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, .10f, actionTime));
@@ -250,6 +414,7 @@ namespace FengChenInn
 
         private void OnDisable()
         {
+            RestoreRunningSwordPose();
             RestoreLegacyDodgePose();
             SetDialoguePose(false);
         }
@@ -265,18 +430,31 @@ namespace FengChenInn
         public bool Attack(bool heavy) => Request(heavy ? BufferedAction.Heavy : BufferedAction.Light);
         public bool Dodge() => Request(BufferedAction.Dodge);
         public bool Skill() => Request(BufferedAction.Skill);
-        private float RecoveryDelay(CombatMotion motion) => motion == CombatMotion.Heavy ? heavyRecoveryDelay
-            : motion == CombatMotion.Skill ? skillRecoveryDelay : lightRecoveryDelay;
+        private float RecoveryDelay(CombatMotion motion) => (motion == CombatMotion.Heavy ? heavyRecoveryDelay
+            : motion == CombatMotion.Skill ? skillRecoveryDelay : lightRecoveryDelay) * responsiveRecoveryScale;
 
-        private void RefreshTarget(float range)
+        private float AssistReach(CombatAttack attack)
+        {
+            float ordinary = Mathf.Min(targetAssistDistance, attack.range + .35f);
+            return attack.motion == CombatMotion.Skill ? Mathf.Max(ordinary, 4.1f) : ordinary;
+        }
+
+        private void RefreshTarget(float range, bool advancing = false)
         {
             if (!enableTargetAssist || actor == null || actor.IsDefeated || actor.ControlLocked
                 || encounter != null && !encounter.IsCombatActive)
             { selectedTarget = null; return; }
             Vector3 intent = GuardRequested ? transform.forward : CameraMovement();
             if (intent.sqrMagnitude < .01f) intent = transform.forward;
+            var orbit = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
+            var locked = orbit != null ? orbit.LockedTarget : null;
+            if (locked != previousLockedTarget) { heavySequence.Reset(); previousLockedTarget = locked; }
+            float reach = advancing ? Mathf.Max(4.1f, range + .35f) : Mathf.Min(targetAssistDistance, range + .35f);
+            if (CombatTargeting.IsValid(actor, locked) && actor.HasLineOfSight(locked)
+                && Vector3.Distance(transform.position, locked.transform.position) <= reach)
+            { selectedTarget = locked; return; }
             selectedTarget = CombatTargeting.Select(actor, Camera.main, intent,
-                Mathf.Min(targetAssistDistance, range + .35f), targetAssistHalfAngle, selectedTarget);
+                reach, targetAssistHalfAngle, selectedTarget);
         }
 
         private void UpdateAttackFacing(float dt)
@@ -285,8 +463,10 @@ namespace FengChenInn
             if (!enableTargetAssist || !CombatTargeting.IsValid(actor, attackTarget))
             { attackTarget = null; return; }
             Vector3 toward = Vector3.ProjectOnPlane(attackTarget.transform.position - transform.position, Vector3.up);
-            if (toward.sqrMagnitude < .001f || toward.magnitude > Mathf.Min(targetAssistDistance, actor.CurrentAttack.range + .35f)
-                || Vector3.Angle(attackIntent, toward) > targetAssistHalfAngle || !actor.HasLineOfSight(attackTarget))
+            var orbit = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
+            bool explicitlyLocked = orbit != null && orbit.LockedTarget == attackTarget;
+            if (toward.sqrMagnitude < .001f || toward.magnitude > AssistReach(actor.CurrentAttack)
+                || !explicitlyLocked && Vector3.Angle(attackIntent, toward) > targetAssistHalfAngle || !actor.HasLineOfSight(attackTarget))
             { attackTarget = null; return; }
             bool comboWindup = actor.CurrentAttack.motion == CombatMotion.Heavy && actor.IsComboWindup(attackTurnTime);
             if (MovementLocked || !comboWindup && actor.AttackElapsed >= Mathf.Min(attackTurnTime, actor.FirstHitTime * .75f)) return;
@@ -304,12 +484,30 @@ namespace FengChenInn
         private bool Request(BufferedAction requested)
         {
             if (dialoguePoseLocked) return false;
+            if (queuedAction != BufferedAction.None && (Time.time > queuedUntil || !CanAfford(queuedAction))) queuedAction = BufferedAction.None;
+            // A rejected, unaffordable defence must not reserve the input slot
+            // and swallow a subsequent free attack.
+            if (!CanAfford(requested)) return false;
+            if (queuedAction == BufferedAction.Dodge && requested != BufferedAction.Dodge) return false;
             if (TryExecute(requested)) { queuedAction = BufferedAction.None; return true; }
             bool available = requested == BufferedAction.Jump ? CanAnimateJump : IsMotionAvailable(MotionFor(requested));
             if (CanBufferInput() && available)
             {
+                // Defence takes priority over a subsequently mashed attack.
+                if (queuedAction == BufferedAction.Dodge && requested != BufferedAction.Dodge) return false;
                 queuedAction = requested;
-                queuedUntil = Time.time + inputBufferTime;
+                float retain = inputBufferTime;
+                if (actor != null && actor.IsAttacking)
+                {
+                    float eligible = actor.LastHitTime + RecoveryDelay(actor.CurrentAttack.motion);
+                    if (requested == BufferedAction.Dodge && allowHeavyDefensiveExit && actor.CurrentAttack.hitWindows != null)
+                        foreach (var window in actor.CurrentAttack.hitWindows)
+                            if (window.end + betweenStrikeRecovery > actor.AttackElapsed)
+                            { eligible = Mathf.Min(eligible, window.end + betweenStrikeRecovery); break; }
+                    float wait = Mathf.Max(0f, eligible - actor.AttackElapsed);
+                    if (wait <= maximumActionBuffer) retain = Mathf.Max(retain, wait + inputBufferTime);
+                }
+                queuedUntil = Time.time + Mathf.Min(maximumActionBuffer, retain);
             }
             return false;
         }
@@ -321,6 +519,8 @@ namespace FengChenInn
             return !MovementLocked || !impact.Active && actor != null && actor.IsStunned
                 && actor.StunRemaining <= inputBufferTime;
         }
+        private bool CanAfford(BufferedAction action) => Stamina >= (action == BufferedAction.Dodge ? dodgeStaminaCost
+            : action == BufferedAction.Jump ? jumpStaminaCost : action == BufferedAction.Skill ? skillStaminaCost : 0f);
         private static CombatMotion MotionFor(BufferedAction action) => action switch
         {
             BufferedAction.Jump => CombatMotion.JumpStart,
@@ -352,6 +552,9 @@ namespace FengChenInn
                     || (!IsGrounded && Time.time - lastGroundedAt > coyoteTime) || !SpendStamina(jumpStaminaCost)) return false;
                 verticalVelocity = Mathf.Sqrt(Mathf.Max(0f, -2f * gravity * jumpHeight));
                 jumpedAt = Time.time;
+                intentionalJump = true;
+                airborneTime = 0f;
+                airbornePeak = transform.position.y;
                 wasGrounded = false;
                 groundedFromMovement = false;
                 animationDriver.Play(CombatMotion.JumpStart, .07f);
@@ -380,14 +583,32 @@ namespace FengChenInn
                 return true;
             }
             if (requested == BufferedAction.Skill && Stamina < skillStaminaCost) return false;
-            CombatAttack attack = requested == BufferedAction.Heavy ? heavyAttack
+            CombatAttack sourceAttack = requested == BufferedAction.Heavy ? heavyAttack
                 : requested == BufferedAction.Skill ? skillAttack : lightAttack;
-            if (attack == null) return false;
+            if (sourceAttack == null) return false;
+            RefreshTarget(sourceAttack.range, requested == BufferedAction.Skill);
+            bool sequential = useSequentialHeavy && requested == BufferedAction.Heavy
+                && heavyAttack.hitWindows != null && heavyAttack.hitWindows.Length > 1;
+            int heavyStep = sequential ? heavySequence.Select(selectedTarget) : -1;
+            CombatAttack attack = HeavyStrikeSequence.Prepare(sourceAttack,
+                animationDriver.MotionLength(motion, sourceAttack.duration * sourceAttack.speed), playerAttackTempo, heavyStep);
             attack.motion = motion;
-            if (useFullClipDurations)
-                attack.duration = animationDriver.MotionLength(motion, attack.duration) / Mathf.Max(.05f, attack.speed);
-            RefreshTarget(attack.range);
+            // Explicit camera lock should also align the start of the attack.
+            // Only turn at launch; never steer a damaging sweep through new targets.
+            var cameraOrbit = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
+            if (selectedTarget != null && cameraOrbit != null && cameraOrbit.LockedTarget == selectedTarget)
+            {
+                Vector3 toward = Vector3.ProjectOnPlane(selectedTarget.transform.position - transform.position, Vector3.up);
+                if (toward.sqrMagnitude > .001f) transform.rotation = Quaternion.LookRotation(toward);
+            }
             if (!actor.TryAttack(attack)) return false;
+            heavySequence.ObserveTarget(selectedTarget);
+            if (sequential)
+            {
+                LastHeavyStep = heavyStep + 1;
+                heavySequence.Accepted(heavyStep, heavyAttack.hitWindows.Length, selectedTarget, attack.duration, heavySequenceMemory);
+            }
+            else if (!useSequentialHeavy) { LastHeavyStep = 0; heavySequence.Reset(); }
             // Failed requests and buffered inputs cost nothing. Pay exactly once
             // only after the actual skill starts, using the shared recovery delay.
             if (requested == BufferedAction.Skill) SpendStamina(skillStaminaCost);
@@ -419,6 +640,7 @@ namespace FengChenInn
         }
         private void Update()
         {
+            RestoreRunningSwordPose();
             RestoreLegacyDodgePose();
             if (dialoguePoseLocked)
             {
@@ -428,6 +650,12 @@ namespace FengChenInn
             float dt = Time.deltaTime;
             if (dt <= 0f || controller == null || !controller.enabled) return;
             if (actor == null || animationDriver == null) RefreshBindings();
+            var orbitNow = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
+            var lockNow = orbitNow != null ? orbitNow.LockedTarget : null;
+            if (lockNow != previousLockedTarget) { heavySequence.Reset(); previousLockedTarget = lockNow; }
+            if (useSequentialHeavy && actor != null && actor.IsAttacking
+                && (actor.CurrentAttack.motion == CombatMotion.Light || actor.CurrentAttack.motion == CombatMotion.Heavy))
+                heavySequence.Sustain(heavySequenceMemory);
             if (actor != null && actor.IsHitPaused)
             {
                 // A few contact-stop frames must not consume the player's short
@@ -459,7 +687,7 @@ namespace FengChenInn
                 ExitAttackRecovery();
             if (queuedAction != BufferedAction.None)
             {
-                if (Time.time > queuedUntil) queuedAction = BufferedAction.None;
+                if (Time.time > queuedUntil || !CanAfford(queuedAction)) queuedAction = BufferedAction.None;
                 else if (TryExecute(queuedAction))
                 {
                     queuedAction = BufferedAction.None;
@@ -498,8 +726,8 @@ namespace FengChenInn
             // Guard remains directed where the player raised it. In particular,
             // S must step away from the enemy rather than turn the guard backward.
             if (canMove && !guarding && movement.sqrMagnitude > .001f)
-                transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(movement), turnSpeed * dt);
-            IsRunning = canMove && IsGrounded && !guarding && movement.sqrMagnitude > .01f;
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(movement),
+                    Mathf.Min(turnSpeed * dt, maximumLocomotionTurnStep));
             float speed = EffectiveMoveSpeed;
             if (guarding) speed = Mathf.Min(speed * guardMoveMultiplier, guardAdjustmentSpeed);
             Vector3 desiredVelocity = canMove ? movement * speed : Vector3.zero;
@@ -527,21 +755,82 @@ namespace FengChenInn
                 displacement += skillDirection * (skillTravelDistance * (after - before));
             }
             if (IsGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
+            float beforeGravity = verticalVelocity;
             verticalVelocity += gravity * dt;
-            CollisionFlags flags = MoveWithStepFallback(displacement + Vector3.up * (verticalVelocity * dt) + impact.Advance(dt));
+            // Integrate the whole interval, including the upward half of a slow
+            // frame. End-velocity-only integration could erase an entire jump
+            // when gravity crossed zero in the same frame as the Space input.
+            float verticalStep = (beforeGravity + verticalVelocity) * .5f * dt;
+            Vector3 beforeMove = transform.position;
+            CollisionFlags flags = MoveWithStepFallback(displacement + Vector3.up * verticalStep + impact.Advance(dt));
+            // A wall may reject movement while the input velocity remains high.
+            // Only count progress along the requested path, excluding floor snap.
+            float travel = Mathf.Clamp(Vector3.Dot(transform.position - beforeMove, planarVelocity.normalized),
+                0f, planarVelocity.magnitude * dt);
+            float travelSpeed = travel / dt;
+            if ((flags & CollisionFlags.Below) == 0 && !intentionalJump && verticalVelocity <= 0f
+                && (wasGrounded || Time.time - lastGroundedAt <= coyoteTime
+                    || airborneTime < minimumFallTime + .08f && airbornePeak - transform.position.y < minimumLandingDrop))
+                flags |= FollowNearbyGround();
             groundedFromMovement = (flags & CollisionFlags.Below) != 0;
             if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f) verticalVelocity = 0f;
             bool groundedNow = IsGrounded;
-            if (groundedNow && !wasGrounded && Time.time - jumpedAt > .05f
+            bool substantialLanding = intentionalJump || airborneTime >= minimumFallTime
+                && airbornePeak - transform.position.y >= minimumLandingDrop;
+            if (groundedNow && !wasGrounded && substantialLanding && Time.time - jumpedAt > .05f
                 && !MovementLocked && State == ActionState.Ready && (actor == null || !actor.IsAttacking))
             {
-                landingUntil = Time.time + landingBlendTime;
-                if (IsMotionAvailable(CombatMotion.JumpLand)) animationDriver.Play(CombatMotion.JumpLand, .07f);
+                float contact = useLightLanding ? Mathf.Min(landingBlendTime, lightLandingClipSeconds) : landingBlendTime;
+                landingUntil = Time.time + contact;
+                if (IsMotionAvailable(CombatMotion.JumpLand))
+                {
+                    if (useLightLanding)
+                        animationDriver.RestartRange(CombatMotion.JumpLand, 0f,
+                            Mathf.Min(lightLandingClipSeconds, animationDriver.MotionLength(CombatMotion.JumpLand)), .06f, 1f);
+                    else animationDriver.Play(CombatMotion.JumpLand, .07f);
+                }
+            }
+            if (groundedNow)
+            {
+                intentionalJump = false;
+                airborneTime = 0f;
+                airbornePeak = transform.position.y;
+            }
+            else
+            {
+                airborneTime += dt;
+                airbornePeak = Mathf.Max(airbornePeak, transform.position.y);
             }
             wasGrounded = groundedNow;
             if (finishingDodge) State = ActionState.Ready;
-            UpdateAnimation(groundedNow, guarding);
+            IsRunning = canMove && groundedNow && !guarding && animationDriver != null && animationDriver.HasTravelSpeed(travelSpeed);
+            UpdateAnimation(groundedNow, guarding, travelSpeed);
             if (transform.position.y < -8f) ResetPose();
+        }
+        private CollisionFlags FollowNearbyGround()
+        {
+            if (groundSnapDistance <= 0f) return CollisionFlags.None;
+            float lift = controller.skinWidth + .06f;
+            float radius = Mathf.Max(.05f, controller.radius * .68f);
+            float nearest = float.PositiveInfinity;
+            float minimumNormal = Mathf.Cos(Mathf.Min(80f, controller.slopeLimit) * Mathf.Deg2Rad);
+            // Probe the support under the capsule's feet, not one point at its
+            // center. At a tread edge the center ray can miss a still-supported
+            // foot and falsely enter the airborne pose.
+            int count = Physics.SphereCastNonAlloc(transform.position + Vector3.up * (lift + radius), radius, Vector3.down,
+                groundHits, lift + groundSnapDistance, ~0, QueryTriggerInteraction.Ignore);
+            // A full buffer cannot establish the nearest safe support.
+            if (count == groundHits.Length) return CollisionFlags.None;
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = groundHits[i];
+                if (hit.collider.transform.IsChildOf(transform) || hit.collider.GetComponentInParent<CombatActor>() != null
+                    || hit.normal.y < minimumNormal) continue;
+                nearest = Mathf.Min(nearest, hit.distance);
+            }
+            if (float.IsPositiveInfinity(nearest)) return CollisionFlags.None;
+            float down = Mathf.Clamp(nearest - lift + controller.skinWidth, .01f, groundSnapDistance);
+            return controller.Move(Vector3.down * down);
         }
         private CollisionFlags MoveWithStepFallback(Vector3 displacement)
         {
@@ -565,14 +854,17 @@ namespace FengChenInn
             finally { controller.stepOffset = step; }
             return flags;
         }
-        private void UpdateAnimation(bool grounded, bool guarding)
+        private void UpdateAnimation(bool grounded, bool guarding, float travelSpeed)
         {
             if (animationDriver == null || !animationDriver.Ready || MovementLocked
                 || State != ActionState.Ready || actor != null && actor.IsAttacking) return;
-            if (!grounded)
+            bool substantialFall = airborneTime >= minimumFallTime && airbornePeak - transform.position.y >= minimumLandingDrop;
+            if (!grounded && (intentionalJump || substantialFall))
             {
                 float fraction = animationDriver.motionSet != null ? animationDriver.motionSet.jumpStartToLoopNormalized : .65f;
-                if (Time.time - jumpedAt >= animationDriver.MotionLength(CombatMotion.JumpStart, .25f) * fraction)
+                float startup = Mathf.Clamp(animationDriver.MotionLength(CombatMotion.JumpStart, .25f) * fraction, .08f, .22f);
+                float takeoffSpeed = Mathf.Sqrt(Mathf.Max(0f, -2f * gravity * jumpHeight));
+                if (!intentionalJump || Time.time - jumpedAt >= startup && verticalVelocity <= takeoffSpeed * .7f)
                     if (IsMotionAvailable(CombatMotion.JumpLoop)) animationDriver.Play(CombatMotion.JumpLoop, .1f);
                 return;
             }
@@ -582,11 +874,15 @@ namespace FengChenInn
             {
                 // At rest, finish the real block clip after releasing Q. Walking,
                 // jumping or starting an attack may interrupt this recovery.
-                if (planarVelocity.sqrMagnitude < .01f && animationDriver.ReleaseGuard()) return;
-                if (planarVelocity.magnitude >= .08f && IsMotionAvailable(CombatMotion.Run))
+                if (travelSpeed < .1f && animationDriver.ReleaseGuard()) return;
+                if (animationDriver.HasTravelSpeed(travelSpeed) && IsMotionAvailable(CombatMotion.Run))
                 {
                     float reference = animationDriver.motionSet.runReferenceSpeed;
-                    float rate = Mathf.Clamp(planarVelocity.magnitude / Mathf.Max(.1f, reference), .35f, 1.5f);
+                    // The imported sprint's travel estimate is much faster than
+                    // this indoor character. Keep a natural cadence at full
+                    // movement speed instead of slowing the whole body to .54x.
+                    float fullRate = Mathf.Max(EffectiveMoveSpeed / Mathf.Max(.1f, reference), fullSpeedRunPlayback);
+                    float rate = Mathf.Clamp(travelSpeed / Mathf.Max(.1f, EffectiveMoveSpeed) * fullRate, .35f, 1.5f);
                     animationDriver.Play(CombatMotion.Run, animationDriver.motionSet.locomotionFade, rate);
                 }
                 else animationDriver.SetLocomotion(0f, encounter != null && encounter.IsCombatActive);
@@ -605,6 +901,7 @@ namespace FengChenInn
             if (!useImpactGuardCost) return;
             float multiplier = source != null && source.CurrentAttack != null
                 && source.CurrentAttack.motion == CombatMotion.Heavy ? 1.5f : 1f;
+            if (actor != null && actor.LastBlockWasPerfect) multiplier *= .35f;
             Stamina = Mathf.Max(0f, Stamina - guardHitStaminaCost * multiplier);
             lastStaminaUseAt = Time.time;
             if (Stamina <= 0f)
@@ -622,6 +919,7 @@ namespace FengChenInn
         }
         public void ClearInput()
         {
+            heavySequence.Reset();
             MoveInput = Vector2.zero;
             RunRequested = GuardRequested = CrouchRequested = false;
             queuedAction = BufferedAction.None;
@@ -639,7 +937,9 @@ namespace FengChenInn
         }
         public void PlaceForStory(Vector3 position, Quaternion rotation)
         {
+            RestoreRunningSwordPose();
             RestoreLegacyDodgePose();
+            carryWeight = 0f;
             if (controller == null) controller = GetComponent<CharacterController>();
             bool controllerWasEnabled = controller.enabled;
             controller.enabled = false;
@@ -651,6 +951,9 @@ namespace FengChenInn
             actionTime = 0f;
             landingUntil = 0f;
             jumpedAt = lastGroundedAt = -10f;
+            intentionalJump = false;
+            airborneTime = 0f;
+            airbornePeak = position.y;
             wasGrounded = wasGuarding = groundedFromMovement = false;
             State = ActionState.Ready;
             ClearInput();
@@ -680,6 +983,7 @@ namespace FengChenInn
                 return;
             }
             RefreshBindings();
+            RestoreRunningSwordPose();
             RestoreLegacyDodgePose();
             ClearInput();
             planarVelocity = Vector3.zero;
@@ -687,6 +991,9 @@ namespace FengChenInn
             impact = default;
             actionTime = landingUntil = 0f;
             jumpedAt = -10f;
+            intentionalJump = false;
+            airborneTime = 0f;
+            airbornePeak = transform.position.y;
             wasGuarding = IsRunning = false;
             State = ActionState.Ready;
             if (actor != null) { actor.CancelAttack(); actor.Invulnerable = false; }

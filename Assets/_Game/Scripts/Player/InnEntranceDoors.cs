@@ -10,21 +10,27 @@ namespace FengChenInn
         public Transform visualSourceRoot;
         public bool rebuildImportedDoorCollision;
         [Min(0f)] public float activationDistance = 3f;
+        [Min(0f)] public float releaseDistanceMargin = .45f;
+        [Min(0f)] public float closeDelay = .45f;
         [Min(0f)] public float rotationSpeed = 90f;
         [Range(0f, 180f)] public float openAngle = 135f;
         public bool ManualControl { get; set; }
         public bool OpenRequested { get; set; }
+        internal bool HoldOpenForEncounter { get; set; }
+        public bool PlayerInRange { get; private set; }
+        public float CurrentAngle => angle;
 
         private Quaternion leftClosed;
         private Quaternion rightClosed;
         private float angle;
+        private float lastPlayerNearAt = -10f;
 
         private void Awake()
         {
             AttachDoorVisual("Existing_wood_door_left_root", leftHinge);
             AttachDoorVisual("Existing_wood_door_right_root", rightHinge);
-            leftClosed = leftHinge.localRotation;
-            rightClosed = rightHinge.localRotation;
+            if (leftHinge != null) leftClosed = leftHinge.localRotation;
+            if (rightHinge != null) rightClosed = rightHinge.localRotation;
         }
 
         private void AttachDoorVisual(string namePrefix, Transform hinge)
@@ -68,13 +74,22 @@ namespace FengChenInn
 
         private void Update()
         {
-            Vector3 offset = player.position - transform.position;
-            offset.y = 0f;
-            bool open = ManualControl ? OpenRequested : offset.sqrMagnitude <= activationDistance * activationDistance;
+            if (player != null && !ManualControl)
+            {
+                Vector3 offset = player.position - transform.position;
+                offset.y = 0f;
+                float radius = activationDistance + (PlayerInRange ? releaseDistanceMargin : 0f);
+                PlayerInRange = offset.sqrMagnitude <= radius * radius;
+                if (PlayerInRange) lastPlayerNearAt = Time.time;
+            }
+            else PlayerInRange = false;
+            // Completing an NPC entrance cannot close a door held by the encounter.
+            bool open = HoldOpenForEncounter || OpenRequested
+                || !ManualControl && (PlayerInRange || Time.time - lastPlayerNearAt < closeDelay);
             float target = open ? openAngle : 0f;
             angle = Mathf.MoveTowards(angle, target, rotationSpeed * Time.deltaTime);
-            leftHinge.localRotation = leftClosed * Quaternion.Euler(0f, -angle, 0f);
-            rightHinge.localRotation = rightClosed * Quaternion.Euler(0f, angle, 0f);
+            if (leftHinge != null) leftHinge.localRotation = leftClosed * Quaternion.Euler(0f, -angle, 0f);
+            if (rightHinge != null) rightHinge.localRotation = rightClosed * Quaternion.Euler(0f, angle, 0f);
         }
     }
 }

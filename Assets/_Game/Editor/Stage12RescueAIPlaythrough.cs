@@ -41,20 +41,28 @@ public static class Stage12RescueAIPlaythrough
     }
     [Serializable] public sealed class Report
     {
-        public string scope = "Actual Stage12 rear-yard rescue, authored five spawn anchors and ally position. Preparation skips tutorial prerequisites/two prior fights and allows actual elite entrance. During the 20-second AI observation: no injected damage, AI suspension, attack forcing or clock/hit-volume changes; player stays distant, invulnerable and excluded as a target. A separate post-observation progression check verifies distant victory waits for approach. If enemies remain then, explicitly counted postObservationDamageCalls clear them and never contribute to observed AI hits/damage. No scene created/saved.";
+        public string scope = "Actual Stage12 front-door reinforcements and indoor allied battle. Preparation skips tutorial prerequisites/two prior fights and allows actual elite entrance. Five grunts must start outside and physically cross the front door before a 20-second actual AI observation. Player is safely parked indoors, invulnerable and excluded as a target. During observation: no injected damage, AI suspension, attack forcing or clock/hit-volume changes. Separate, explicitly counted post-observation damage clears survivors only to verify the normal farewell and victory flow; it never contributes to observed AI damage. No scene created/saved.";
         public string phase = "NotStarted", scene, outputFolder, finalStage, endReason;
         public bool active, completed, passed, restoredTitle, framesAdvanced, gameTimeAdvanced, allAIEnabled;
-        public bool distantCompletionStayedPlayable, distantCompletionHadNoFarewell, approachTriggeredFarewell, reachedVictory;
-        public string distantView, distantStoryPart, distantPrompt, postObservationStage;
+        public bool allFiveEnteredFromOutside, automaticFarewell, reachedVictory;
+        public bool observationOnly, uiStateRestored;
+        public string postObservationStage;
         public int setupDamageCalls, observedDamageInjectionCalls, firstFrame, lastFrame, runtimeErrors, focusPauseResumes;
-        public int postObservationDamageCalls, approachFrame, farewellFrame;
+        public int postObservationDamageCalls, farewellFrame;
         public int gruntAttacks, allyAttacks, gruntActualHits, allyActualHits, gruntDamage, allyDamage;
         public float elapsedSeconds, observedSeconds, firstGameTime, lastGameTime;
-        public Vector3 isolatedPlayerPosition, approachFixturePosition, allyPositionAtApproach;
-        public float approachFixtureGroundY;
+        public Vector3 isolatedPlayerPosition, frontDoorPosition, frontDoorInward;
+        public List<DoorCrossing> entrance = new();
         public List<ActorResult> actors = new();
         public List<Sample> samples = new();
         public List<string> screenshots = new(), failures = new();
+    }
+    [Serializable] public sealed class DoorCrossing
+    {
+        public string actor;
+        public Vector3 outsideStart, latestPosition;
+        public bool startedOutside, crossedThreshold, reachedHall;
+        public int thresholdFrame, hallFrame;
     }
     sealed class Watch
     {
@@ -80,16 +88,23 @@ public static class Stage12RescueAIPlaythrough
     static float observeStartedAt, nextSampleAt;
     static int lastFrame, captureFrame, lastDialogueAdvanceFrame;
     static bool observing, oldBackground, shot5, shot15;
+    static bool oldUiEnabled, oldFocusSuppression, savedUiState;
     static InputSettings.BackgroundBehavior oldInputBackground;
     static string View => Get(ui, "view").ToString();
 
     [Unity.Pipeline.Commands.CliCommand("innstage12", "begin_rescue_ai_test", "Observe actual five-grunt versus ally AI/sword damage for 20 seconds in Stage12")]
-    public static string Begin()
+    public static string Begin() => BeginInternal(false);
+    [Unity.Pipeline.Commands.CliCommand("innstage12", "begin_rescue_ai_only", "Observe only natural indoor NPC attacks for twenty seconds, then restore Title; separate from the rear-departure story test")]
+    public static string BeginOnly() => BeginInternal(true);
+    static string BeginInternal(bool observationOnly)
     {
         if (report.active) return Status();
         Detach(); watches.Clear(); observing = shot5 = shot15 = false;
         ui = null; fighter = null; player = null; input = null; duel = null;
-        report = new Report(); beganAt = EditorApplication.timeSinceStartup;
+        report = new Report { observationOnly = observationOnly }; beganAt = EditorApplication.timeSinceStartup;
+        savedUiState = false;
+        if (observationOnly)
+            report.scope = "Actual Stage12 five-grunt front-door entrance and natural indoor NPC combat. Preparation explicitly skips tutorial/two prior fights through public progression/damage interfaces, then invokes the existing direct BeginRescueBattle API; this does not test the rear-door return storyline. During observation no injected damage, AI suspension, forced attacks, animation clock changes, health changes, hit-volume changes or time acceleration occur. Player is safely parked and ControlLocked so it is excluded from normal AI targeting. Actual NPC roots, attacks, interruptions, sword hit events and damage are recorded for twenty seconds or an earlier natural victory. UI Update is temporarily disabled only after formal rescue starts to isolate NPC combat from later story transitions; its original enabled state and Editor-only focus-pause suppression are restored. Screenshots/HUD are not UI-flow or performance acceptance. No post-observation survivor damage is injected, no farewell/Victory claim is made. FinalDeparture/Epilogue is verified by the separate Story fixture. No scene created or saved.";
         oldBackground = Application.runInBackground; oldInputBackground = InputSystem.settings.backgroundBehavior;
         try
         {
@@ -100,6 +115,8 @@ public static class Stage12RescueAIPlaythrough
             Directory.CreateDirectory(report.outputFolder);
             fighter = Object.FindFirstObjectByType<PrototypeFighter>(); ui = Object.FindFirstObjectByType<InnInterface>();
             Require(fighter != null && ui != null, "Actual player/UI missing.");
+            oldUiEnabled = ui.enabled; oldFocusSuppression = ui.SuppressFocusPauseForVerification; savedUiState = true;
+            ui.SuppressFocusPauseForVerification = true;
             input = fighter.GetComponent<PrototypeInput>(); duel = fighter.GetComponent<DuelEncounter>();
             Require(input != null && duel != null, "Actual input/encounter missing.");
             Application.runInBackground = true;
@@ -108,7 +125,6 @@ public static class Stage12RescueAIPlaythrough
             if (gameView != null) EditorWindow.GetWindow(gameView).Focus();
             Call("Restart", true); player = duel.PlayerActor;
             Require(duel.HasRequiredBindings, duel.MissingBindingReason);
-            report.isolatedPlayerPosition = player.transform.position;
             Call("StartGame"); input.enabled = false;
             Require(duel.RevealTutorialSentry() && duel.CompleteTutorialInstructions(), "Could not prepare the explicitly skipped tutorial prerequisite.");
             Call("BeginTutorialFight");
@@ -134,7 +150,7 @@ public static class Stage12RescueAIPlaythrough
         {
             Observe();
             Require(EditorApplication.isPlaying && !EditorApplication.isPaused, "Play Mode was stopped or paused.");
-            if (report.elapsedSeconds > 60f) { Fail("60-second total setup/observation timeout."); return; }
+            if (report.elapsedSeconds > 90f) { Fail("90-second total setup/entrance/observation timeout."); return; }
             if (View == "Pause")
             {
                 ShowPlay(); report.focusPauseResumes++;
@@ -155,35 +171,69 @@ public static class Stage12RescueAIPlaythrough
                 Require(duel.EliteActor.ReceiveDamage(player, duel.EliteActor.MaxHealth + 1, 0f, 0f, true), "Elite setup damage rejected.");
                 report.setupDamageCalls++;
                 Require(duel.MakeEliteAlly(), "Won elite could not become allied.");
-                Call("BeginRescue");
+                if (report.observationOnly)
+                {
+                    Require(duel.BeginRescueBattle(), "Direct formal rescue preparation API rejected.");
+                    ShowPlay(); ui.enabled = false;
+                }
+                else Call("BeginRescue");
                 Require(duel.Stage == DuelEncounter.EncounterStage.Rescue && duel.RemainingEnemies == 5, "Actual rescue did not spawn five grunts.");
-                // Keep the real ReturnToHelp state; being distant must not count as having helped.
-                fighter.PlaceForStory(report.isolatedPlayerPosition, fighter.transform.rotation);
+                PlacePlayerInHall();
                 player.Invulnerable = true; player.ControlLocked = true; input.enabled = false;
-                Require(Vector3.ProjectOnPlane(player.transform.position - duel.EliteActor.transform.position, Vector3.up).magnitude > 5f,
-                    "Initial safe player spawn is not distant enough to isolate the actual rescue group.");
-                foreach (var actor in duel.EnemyActors) AddWatch(actor);
-                AddWatch(duel.EliteActor);
-                Require(watches.Count == 6 && watches.All(w => w.brain != null && w.brain.enabled && w.brain.CombatEnabled),
-                    "Expected all five real grunt AIs and the allied elite AI enabled by the encounter.");
-                Require(duel.EliteActor.Health == 600 && duel.EliteActor.GruntDamageHealthFloor == 1, "Authored ally health/protection missing.");
+                var door = Object.FindFirstObjectByType<InnEntranceDoors>();
+                Require(door != null, "Actual front entrance missing.");
+                report.frontDoorPosition = door.transform.position;
+                report.frontDoorInward = duel.eliteArrivalPosition.z >= door.transform.position.z ? Vector3.forward : Vector3.back;
+                foreach (var actor in duel.EnemyActors)
+                    report.entrance.Add(new DoorCrossing { actor = actor.name, outsideStart = actor.transform.position,
+                        latestPosition = actor.transform.position,
+                        startedOutside = Vector3.Dot(actor.transform.position - report.frontDoorPosition, report.frontDoorInward) < -.5f });
+                Require(report.entrance.Count == 5 && report.entrance.All(row => row.startedOutside), "Five reinforcements did not start outside the front door.");
+                Require(player.MaxHealth == 150 && duel.EnemyActors.All(actor => actor.MaxHealth == 83)
+                    && duel.EliteActor.MaxHealth == 900 && duel.EliteActor.GruntDamageHealthFloor == 1, "Scaled health/protected ally values missing.");
                 orbit = Camera.main != null ? Camera.main.GetComponent<OrbitCamera>() : null;
                 Require(orbit != null, "Actual orbit camera missing.");
                 orbit.enabled = true;
                 framedTarget = duel.EnemyActors[0];
                 orbit.FrameActors(duel.EliteActor.transform, framedTarget.transform, true);
+                report.phase = "AwaitReinforcementEntrance"; phaseAt = EditorApplication.timeSinceStartup;
+                Capture("00_FiveOutsideFrontDoor");
+                return;
+            }
+            if (report.phase == "AwaitReinforcementEntrance")
+            {
+                for (int i = 0; i < report.entrance.Count; i++)
+                {
+                    var row = report.entrance[i];
+                    row.latestPosition = duel.EnemyActors[i].transform.position;
+                    float inside = Vector3.Dot(row.latestPosition - report.frontDoorPosition, report.frontDoorInward);
+                    if (!row.crossedThreshold && inside > .2f) { row.crossedThreshold = true; row.thresholdFrame = Time.frameCount; }
+                    if (!row.reachedHall && inside >= 2.15f) { row.reachedHall = true; row.hallFrame = Time.frameCount; }
+                }
+                if (duel.RescueEntranceInProgress)
+                {
+                    Require(EditorApplication.timeSinceStartup - phaseAt < 30d, "Five real grunts did not complete the front-door walk within 30 seconds.");
+                    return;
+                }
+                report.allFiveEnteredFromOutside = duel.RescueEnteredCount == 5 && report.entrance.All(row => row.startedOutside && row.crossedThreshold && row.reachedHall);
+                Require(report.allFiveEnteredFromOutside, "Not every reinforcement physically crossed from outside into the hall.");
+                foreach (var actor in duel.EnemyActors) AddWatch(actor);
+                AddWatch(duel.EliteActor);
+                Require(watches.Count == 6 && watches.All(w => w.actor.IsDefeated || (w.brain != null && w.brain.enabled && w.brain.CombatEnabled)),
+                    "Expected all five real grunt AIs and the allied elite AI enabled after entrance.");
                 report.firstFrame = Time.frameCount; report.firstGameTime = observeStartedAt = Time.time;
                 nextSampleAt = Time.time; observing = true;
                 report.allAIEnabled = true; report.phase = "ObservingActualAI";
-                Capture("01_AuthoredRescueStart");
+                Capture("01_AllFiveInsideHall");
                 return;
             }
             if (report.phase == "CaptureEnd")
             {
                 if (Time.frameCount < captureFrame + 3) return;
                 foreach (var watch in watches) EndSwing(watch, "ObservationBoundary");
+                if (report.observationOnly) { Finish(); return; }
                 // All observation delegates are already gated off. This explicit
-                // fallback exists only to exercise the separate approach/result gate.
+                // fallback exists only to exercise the separate farewell/result flow.
                 player.ControlLocked = false;
                 if (duel.Stage == DuelEncounter.EncounterStage.Rescue)
                     foreach (var actor in duel.EnemyActors.ToArray())
@@ -194,43 +244,26 @@ public static class Stage12RescueAIPlaythrough
                         }
                 Require(duel.Stage == DuelEncounter.EncounterStage.Complete, "Post-observation progression did not reach Complete.");
                 report.postObservationStage = duel.Stage.ToString();
-                report.phase = "CheckDistantCompletion"; captureFrame = Time.frameCount;
+                report.phase = "AwaitFarewell"; captureFrame = Time.frameCount;
                 return;
             }
-            if (report.phase == "CheckDistantCompletion")
-            {
-                if (Time.frameCount < captureFrame + 3) return;
-                report.distantView = View;
-                report.distantStoryPart = Get(ui, "part").ToString();
-                report.distantPrompt = ((UnityEngine.UI.Text)Get(ui, "hintText")).text;
-                report.distantCompletionStayedPlayable = View == "Play" && report.distantStoryPart == "ReturnToHelp"
-                    && Time.timeScale > 0f && !player.ControlLocked;
-                report.distantCompletionHadNoFarewell = View != "Dialogue" && View != "Victory" && !(bool)Get(ui, "hasHelped");
-                Require(report.distantCompletionStayedPlayable && report.distantCompletionHadNoFarewell,
-                    "Distant player received farewell/result before approaching the ally.");
-                Capture("05_DistantClear_WaitsForApproach");
-                report.phase = "CaptureDistantCompletion"; captureFrame = Time.frameCount;
-                return;
-            }
-            if (report.phase == "CaptureDistantCompletion")
-            {
-                if (Time.frameCount < captureFrame + 3) return;
-                PlacePlayerNearAlly();
-                report.approachFrame = Time.frameCount;
-                report.phase = "AwaitApproachFarewell";
-                return;
-            }
-            if (report.phase == "AwaitApproachFarewell")
+            if (report.phase == "AwaitFarewell")
             {
                 if (View == "Dialogue")
                 {
                     report.farewellFrame = Time.frameCount;
-                    report.approachTriggeredFarewell = (bool)Get(ui, "hasHelped") && Get(ui, "part").ToString() == "Finished";
-                    Require(report.approachTriggeredFarewell, "Approach opened an unexpected dialogue.");
-                    Capture("06_Approach_Farewell"); captureFrame = lastDialogueAdvanceFrame = Time.frameCount;
+                    report.automaticFarewell = (bool)Get(ui, "hasHelped") && Get(ui, "part").ToString() == "Finished";
+                    Require(report.automaticFarewell, "Indoor victory opened an unexpected dialogue.");
+                    foreach (var defeated in duel.EnemyActors)
+                    {
+                        if (defeated == null || defeated.Role != CombatRole.Grunt || !defeated.IsDefeated) continue;
+                        foreach (var renderer in defeated.GetComponentsInChildren<Renderer>(true))
+                            Require(!renderer.enabled, "Defeated grunt remained visible in paused farewell: " + defeated.name);
+                    }
+                    Capture("05_IndoorVictory_Farewell"); captureFrame = lastDialogueAdvanceFrame = Time.frameCount;
                     report.phase = "AdvanceFarewell";
                 }
-                else Require(Time.frameCount - report.approachFrame <= 6, "Nearby player did not reach farewell through normal UI updates.");
+                else Require(Time.frameCount - captureFrame <= 10, "Indoor victory did not reach farewell through normal UI updates.");
                 return;
             }
             if (report.phase == "AdvanceFarewell")
@@ -238,7 +271,7 @@ public static class Stage12RescueAIPlaythrough
                 if (View == "Victory")
                 {
                     report.reachedVictory = true;
-                    Capture("07_Approach_Victory"); captureFrame = Time.frameCount; report.phase = "CaptureVictory";
+                    Capture("06_IndoorVictory_Result"); captureFrame = Time.frameCount; report.phase = "CaptureVictory";
                 }
                 else
                 {
@@ -288,33 +321,34 @@ public static class Stage12RescueAIPlaythrough
         catch (Exception e) { Fail(e.GetBaseException().ToString()); }
     }
 
-    static void PlacePlayerNearAlly()
+    static void PlacePlayerInHall()
     {
         CombatActor ally = duel.EliteActor;
-        Require(ally != null && !ally.IsDefeated, "Living ally missing for approach regression.");
+        Require(ally != null && !ally.IsDefeated, "Living ally missing for indoor observation.");
+        var door = Object.FindFirstObjectByType<InnEntranceDoors>();
+        Require(door != null, "Front entrance missing for indoor observation.");
+        Vector3 inward = duel.eliteArrivalPosition.z >= door.transform.position.z ? Vector3.forward : Vector3.back;
+        Vector3 right = Vector3.Cross(Vector3.up, inward);
         var motor = player.GetComponent<CharacterController>();
         var place = typeof(CombatActor).Assembly.GetType("FengChenInn.ActorPlacement").GetMethod("TryPlace", BindingFlags.Static | BindingFlags.NonPublic);
-        foreach (float distance in new[] { 2.2f, 2.8f, 1.5f })
-            for (int direction = 0; direction < 8; direction++)
+        foreach (float depth in new[] { 5.5f, 4.5f, 6.5f })
+            foreach (float side in new[] { -2.5f, 2.5f, -1.8f, 1.8f })
             {
-                // Use the ally's actual rear-yard floor level, not the higher indoor player level.
-                Vector3 wanted = ally.transform.position + Quaternion.Euler(0f, direction * 45f, 0f) * Vector3.forward * distance;
+                Vector3 wanted = door.transform.position + inward * depth + right * side;
+                wanted.y = duel.eliteArrivalPosition.y;
                 Vector3 toward = Vector3.ProjectOnPlane(ally.transform.position - wanted, Vector3.up);
                 Quaternion facing = Quaternion.LookRotation(toward);
-                if (!(bool)place.Invoke(null, new object[] { motor, wanted, facing, float.NaN })) continue;
-                if (Vector3.ProjectOnPlane(player.transform.position - ally.transform.position, Vector3.up).magnitude > 3.2f) continue;
+                if (!(bool)place.Invoke(null, new object[] { motor, wanted, facing, door.transform.position.z })) continue;
+                if (Vector3.Dot(player.transform.position - door.transform.position, inward) < 3f) continue;
                 RaycastHit[] ground = Physics.RaycastAll(player.transform.position + Vector3.up * .25f, Vector3.down, .7f, ~0, QueryTriggerInteraction.Ignore);
                 var supported = ground.Where(hit => hit.collider.GetComponentInParent<CombatActor>() == null && hit.normal.y > .7f).OrderBy(hit => hit.distance).ToArray();
                 if (supported.Length == 0) continue;
                 fighter.PlaceForStory(player.transform.position, facing);
-                player.ControlLocked = false;
-                report.approachFixturePosition = player.transform.position;
-                report.allyPositionAtApproach = ally.transform.position;
-                report.approachFixtureGroundY = supported[0].point.y;
+                report.isolatedPlayerPosition = player.transform.position;
                 Physics.SyncTransforms();
                 return;
             }
-        throw new InvalidOperationException("No valid existing rear-yard ground beside the ally for approach regression.");
+        throw new InvalidOperationException("No safe indoor observation position clear of the front-door route.");
     }
 
     static void AddWatch(CombatActor actor)
@@ -420,18 +454,26 @@ public static class Stage12RescueAIPlaythrough
         if (!report.actors.Any(a => a.role == "Grunt" && a.naturalEnds > 0) || !report.actors.Any(a => a.role == "Elite" && a.naturalEnds > 0))
             report.failures.Add("Both sides did not finish at least one genuine full attack clip; inspect interruption evidence.");
         if (!report.allAIEnabled) report.failures.Add("An active combatant's AI was not enabled for the observation.");
-        if (!report.distantCompletionStayedPlayable || !report.distantCompletionHadNoFarewell
-            || !report.approachTriggeredFarewell || !report.reachedVictory)
-            report.failures.Add("Distant-clear/approach/farewell/Victory regression did not complete.");
+        if (!report.allFiveEnteredFromOutside || !report.observationOnly && (!report.automaticFarewell || !report.reachedVictory))
+            report.failures.Add("Front-door entrance/indoor battle/farewell/Victory regression did not complete.");
         foreach (var row in report.actors)
             if (!row.defeated && row.minimumY < row.startPosition.y - 2f) report.failures.Add(row.name + " fell more than two meters below its authored starting level.");
         try
         {
+            if (savedUiState && ui != null) ui.enabled = oldUiEnabled;
             if (EditorApplication.isPlaying && ui != null)
             { fighter.ClearInput(); Call("Restart", true); report.restoredTitle = View == "Title"; }
         }
         catch (Exception e) { report.failures.Add("Restore title: " + e.GetBaseException().Message); }
         Application.runInBackground = oldBackground; InputSystem.settings.backgroundBehavior = oldInputBackground;
+        if (savedUiState && ui != null)
+        {
+            ui.enabled = oldUiEnabled; ui.SuppressFocusPauseForVerification = oldFocusSuppression;
+            report.uiStateRestored = ui.enabled == oldUiEnabled && ui.SuppressFocusPauseForVerification == oldFocusSuppression;
+        }
+        else report.uiStateRestored = !savedUiState || ui == null;
+        savedUiState = false;
+        if (!report.uiStateRestored) report.failures.Add("Test UI enabled/focus-suppression state did not restore.");
         if (!report.restoredTitle) report.failures.Add("Title restoration was not confirmed.");
         foreach (string path in report.screenshots) if (!File.Exists(path)) report.failures.Add("Missing screenshot: " + path);
         report.passed = report.failures.Count == 0 && report.runtimeErrors == 0;

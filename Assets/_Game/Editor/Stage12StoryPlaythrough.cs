@@ -7,6 +7,7 @@ using FengChenInn;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using Object = UnityEngine.Object;
 
 // Actual Stage12 UI callbacks, practice observation and live animation frames.
@@ -20,10 +21,19 @@ public static class Stage12StoryPlaythrough
         public int frame, playerHealth, playerMax, allyHealth, allyMax, enemies, practiceStep;
         public float time;
         public bool ledgerRead, sentryVisible, instructionsComplete, allyProtected, playerPoseLocked;
+        public bool rearDoorOpen;
+        public Vector3 playerPosition;
+    }
+    [Serializable] public sealed class BattleStartSample
+    {
+        public string stage, source = "DuelEncounter.StageChanged synchronous callback";
+        public int frame, occurrence, playerHealth, playerMax, allyHealth, allyMax;
+        public float time;
+        public bool combatActive, fullHealth, rescueEntranceInProgress;
     }
     [Serializable] public sealed class PracticeSample
     {
-        public int step, startFrame, endFrame, requests, executedActions, mouseDeltaFrames;
+        public int step, startFrame, endFrame, requests, executedActions, mouseDeltaFrames, injectedDynamicFrames;
         public float startTime, endTime, measuredMovement, measuredLookAngle, maximumJumpRise;
         public bool accepted, groundedAtEnd;
         public string motion;
@@ -34,11 +44,12 @@ public static class Stage12StoryPlaythrough
     }
     [Serializable] public sealed class LookSample
     {
-        public int frame;
+        public int frame, lastInjectedDynamicFrame;
         public string cursor, cursorAfterRecovery, focusedWindow;
         public bool applicationFocused, orbitEnabled, framing, hasTarget, dialoguePoseLocked;
         public float yaw, renderedAngleSincePreviousFrame, currentCameraDistance;
         public Vector3 cameraPosition, cameraForward;
+        public Vector2 observedMouseDelta;
     }
     [Serializable] public sealed class DialogueSample
     {
@@ -57,13 +68,20 @@ public static class Stage12StoryPlaythrough
     }
     [Serializable] public sealed class Report
     {
-        public string scope = "Existing Stage12 scene. Ledger/E/result callbacks are real UI entry points; movement, queued mouse delta, public action requests and animation completion are observed over real frames. AI Updates are temporarily suspended; ReceiveDamage deliberately advances battle outcomes. Position fixtures precede observations. No tutorial counters or completion flags are forged, no scene is created/saved. Background pause recovery is harness-only and logged.";
+        public string scope = "Existing Stage12 scene. Ledger/E/result callbacks are real UI entry points; movement, synthetic mouse delta supplied through InputState.Change in InputSystem Dynamic onAfterUpdate, public action requests and animation completion are observed over real frames. Mouse input is injected only in actual practice step 1 and consumed by normal OrbitCamera/guide updates. AI Updates are temporarily suspended except during the outside cover phase and real front-door reinforcement entrance, when normal AI must clear the doorway and continue the cover battle. Full-health entry checks sample the synchronous formal battle StageChanged callback, excluding RescueCover. ReceiveDamage deliberately advances battle outcomes and explicitly tests the ally health floor. Position fixtures precede observations, including legal locations on both sides of the existing rear door and near the ally; E/anchor callbacks and actual door rotation time are still used. These fixtures are not a manual traversal/pathfinding acceptance. No tutorial counters or completion flags are forged, no scene is created/saved. The Editor-only SuppressFocusPauseForVerification switch is temporarily enabled and restored to isolate external focus loss; actual UI initialized/update remains enabled. This is not a verification of normal focus-pause behavior. Final rear departure must reach an independent Epilogue view before Victory.";
         public string phase = "NotStarted", scene, outputFolder, resultText;
         public bool active, completed, passed, retryEachStage, framesAdvanced, gameTimeAdvanced, returnedToTitle;
+        public bool departedThroughRear, coverBeganOutside, returnedThroughRear, joinedAfterReturn, finalDeparture, epilogueSeen;
+        public bool focusPauseSuppressionBefore, focusPauseSuppressionDuring, focusPauseSuppressionRestored;
+        public bool keyboardEnabledBefore, mouseEnabledBefore, keyboardEnabledDuring, mouseEnabledDuring, diagnosticDevicesRestored;
+        public string editorInputRoutingBefore, editorInputRoutingDuring, editorInputRoutingAfter;
+        public bool editorInputRoutingRestored;
+        public float epilogueSeconds;
         public int checks, frameStart, frameEnd, runtimeErrors, focusPauseResumes, battlesObserved, retriesObserved;
         public float timeStart, timeEnd, elapsedSeconds, eliteEntranceTravel;
         public List<string> successes = new(), failures = new();
         public List<StateSample> states = new();
+        public List<BattleStartSample> battleStarts = new();
         public List<PracticeSample> practice = new();
         public List<LookSample> lookSamples = new();
         public List<DialogueSample> dialogues = new();
@@ -83,12 +101,20 @@ public static class Stage12StoryPlaythrough
     static Vector3 previousPracticePosition, previousViewForward, entrancePrevious, practiceMoveWorld;
     static Vector3[] dialogueBones;
     static bool entranceObserved, oldBackground, changingPhase;
+    static bool oldFocusPauseSuppression, focusPauseSuppressionSaved;
+    static bool protectingEntrancePlayer, entrancePlayerWasInvulnerable;
     static InputSettings.BackgroundBehavior oldInputBackground;
+    static InputSettings.EditorInputBehaviorInPlayMode oldEditorInputRouting;
+    static Keyboard savedKeyboard;
+    static Mouse savedMouse;
+    static bool diagnosticDevicesSaved, oldKeyboardEnabled, oldMouseEnabled;
     static double beganAt, phaseAt, lastDialogueAdvance;
     static int lastFrame, phaseFrame, practiceWarmupUntil;
     static string previousDialogueLine;
     static float nextBattleActionAt;
+    static double epilogueBegan;
     static int nextLookFocusRecoveryFrame;
+    static int lastLookInputFrame = -1;
     static string View => Get(ui, "view").ToString();
     static string Part => Get(ui, "part").ToString();
 
@@ -104,13 +130,17 @@ public static class Stage12StoryPlaythrough
     static string BeginInternal(bool retries)
     {
         if (report.active) return Status();
-        Detach(); brains.Clear(); observedBattles.Clear(); retriedBattles.Clear();
+        Detach(); RestoreDiagnosticDevices(); brains.Clear(); observedBattles.Clear(); retriedBattles.Clear();
         fighter = null; ui = null; player = null; dialogue = null; practice = null;
-        entranceObserved = false; changingPhase = false;
+        entranceObserved = false; changingPhase = false; protectingEntrancePlayer = false; lastLookInputFrame = -1;
         report = new Report { retryEachStage = retries, frameStart = Time.frameCount, timeStart = Time.time };
+        report.scope += " Keyboard/mouse enabled states are saved; disabled devices are explicitly enabled only after the test selects IgnoreFocus and checked before proceeding. Original device enabled states are independently restored on every exit. Synthetic mouse events do not verify hardware input or normal focus-loss handling.";
+        report.scope += " Editor input routing is temporarily AllDeviceInputAlwaysGoesToGameView and independently restored; the InputSettings asset is never saved by this fixture.";
         beganAt = EditorApplication.timeSinceStartup;
         oldBackground = Application.runInBackground;
         oldInputBackground = InputSystem.settings.backgroundBehavior;
+        oldEditorInputRouting = InputSystem.settings.editorInputBehaviorInPlayMode;
+        report.editorInputRoutingBefore = oldEditorInputRouting.ToString();
         try
         {
             Require(EditorApplication.isPlaying && !EditorApplication.isPaused, "Start unpaused Play Mode in the existing Stage12 first.");
@@ -121,10 +151,29 @@ public static class Stage12StoryPlaythrough
             fighter = Object.FindFirstObjectByType<PrototypeFighter>();
             ui = Object.FindFirstObjectByType<InnInterface>();
             Require(fighter != null && ui != null, "Actual player/UI missing.");
+            oldFocusPauseSuppression = ui.SuppressFocusPauseForVerification;
+            focusPauseSuppressionSaved = true;
+            report.focusPauseSuppressionBefore = oldFocusPauseSuppression;
+            ui.SuppressFocusPauseForVerification = true;
+            report.focusPauseSuppressionDuring = ui.SuppressFocusPauseForVerification;
             input = fighter.GetComponent<PrototypeInput>(); duel = fighter.GetComponent<DuelEncounter>();
             Require(input != null && duel != null, "Actual input/encounter missing.");
+            Require(Keyboard.current != null && Mouse.current != null, "Actual Input System keyboard and mouse are required.");
+            savedKeyboard = Keyboard.current; savedMouse = Mouse.current;
+            oldKeyboardEnabled = report.keyboardEnabledBefore = savedKeyboard.enabled;
+            oldMouseEnabled = report.mouseEnabledBefore = savedMouse.enabled;
+            diagnosticDevicesSaved = true;
             Application.runInBackground = true;
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+            InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            report.editorInputRoutingDuring = InputSystem.settings.editorInputBehaviorInPlayMode.ToString();
+            Require(InputSystem.settings.editorInputBehaviorInPlayMode == InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView,
+                "Diagnostic Editor routing did not enable GameView delivery; refusing a no-input verification.");
+            if (!savedKeyboard.enabled) InputSystem.EnableDevice(savedKeyboard);
+            if (!savedMouse.enabled) InputSystem.EnableDevice(savedMouse);
+            report.keyboardEnabledDuring = savedKeyboard.enabled; report.mouseEnabledDuring = savedMouse.enabled;
+            Require(report.keyboardEnabledDuring && report.mouseEnabledDuring,
+                "Diagnostic keyboard/mouse remain disabled after explicit enabling; refusing a no-input verification.");
             Type gameView = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
             if (gameView != null) EditorWindow.GetWindow(gameView).Focus();
             Call("Restart", true); player = duel.PlayerActor;
@@ -135,9 +184,13 @@ public static class Stage12StoryPlaythrough
             Check(!duel.TutorialActor.gameObject.activeInHierarchy && !duel.EliteActor.gameObject.activeInHierarchy && !ui.LedgerRead,
                 "Title/reset begins with unread ledger and hidden opponents");
             report.active = true;
+            duel.StageChanged += OnBattleStageChanged;
             fighter.ActionPerformed += OnAction;
             Application.logMessageReceived += OnLog;
             EditorApplication.update += Tick;
+            InputSystem.onAfterUpdate += FeedPracticeMouse;
+            EditorApplication.playModeStateChanged += VerificationPlayState;
+            AssemblyReloadEvents.beforeAssemblyReload += VerificationReload;
             Call("StartGame");
             input.enabled = false;
             PlaceNear(ui.ledgerAnchor.position, ui.ledgerInteractionDistance - .15f);
@@ -156,7 +209,7 @@ public static class Stage12StoryPlaythrough
         {
             Observe();
             if (!EditorApplication.isPlaying) { Fail("Play Mode ended early."); return; }
-            if (report.elapsedSeconds > (report.retryEachStage ? 210f : 150f)) { Fail("Live workflow timeout."); return; }
+            if (report.elapsedSeconds > (report.retryEachStage ? 300f : 240f)) { Fail("Live workflow timeout."); return; }
             if (EditorApplication.isPaused) { Fail("Editor was paused externally."); return; }
             // Product focus handling stays unchanged; this autonomous fixture resumes only its own live run.
             if (View == "Pause")
@@ -203,6 +256,7 @@ public static class Stage12StoryPlaythrough
                     Capture("03_TutorialBattle"); EnterBattle();
                     break;
                 case "Battle":
+                    if (battle == DuelEncounter.EncounterStage.Rescue && duel.RescueEntranceInProgress) return;
                     if (Time.time < nextBattleActionAt) return;
                     if (report.retryEachStage && !retriedBattles.Contains(battle))
                     {
@@ -233,8 +287,13 @@ public static class Stage12StoryPlaythrough
                     Check(duel.Stage == battle && player.Health == player.MaxHealth && duel.IsCombatActive,
                         battle + " result retry restores only this battle at full player health");
                     if (battle == DuelEncounter.EncounterStage.Rescue)
-                        Check(duel.EliteActor.Health == 600 && duel.EliteActor.GruntDamageHealthFloor == 1 && duel.RemainingEnemies == 5,
-                            "Rescue retry restores five enemies and the protected 600-health ally");
+                    {
+                        var originalJoin = report.battleStarts.FirstOrDefault(s => s.stage == DuelEncounter.EncounterStage.Rescue.ToString());
+                        Check(originalJoin != null && duel.EliteActor.Health == originalJoin.allyHealth
+                            && duel.EliteActor.MaxHealth == originalJoin.allyMax
+                            && duel.EliteActor.GruntDamageHealthFloor == 1 && duel.RemainingEnemies == 5,
+                            "Rescue retry restores five enemies and the ally health recorded at the actual Join checkpoint");
+                    }
                     report.retriesObserved++; EnterBattle();
                     break;
                 case "EliteArrival":
@@ -253,41 +312,97 @@ public static class Stage12StoryPlaythrough
                     if (View == "Dialogue") { AdvanceSpokenLine(); return; }
                     if (Part != "Departure" || duel.EliteActor.Team != CombatTeam.Player) return;
                     CloseDialogueObservation();
-                    Check(duel.EliteActor.Health == 600 && duel.EliteActor.MaxHealth == 600, "Won elite becomes a 600-health ally");
-                    PlaceNear(ui.rearDoorAnchor.position, ui.storyAnchors.rearDoorDistance - .15f);
+                    Check(duel.EliteActor.Health == 900 && duel.EliteActor.MaxHealth == 900, "Won elite becomes a protected 900-health ally");
+                    Check(!duel.IsCombatActive && !duel.RescueCoverActive && !(bool)Get(ui, "hasHelped"),
+                        "After the elite dialogue the player must leave first; cover battle has not begun");
+                    Capture("05_RearDeparture");
+                    PlaceNear(ui.rearDoorAnchor.position - RearOutward() * .65f, .1f);
                     Call("UpdateStoryMovement", true);
-                    Check(ui.storyAnchors.RearDoorOpen, "Rear-door E callback requests the authored door to open");
-                    Capture("05_RearDoor"); SetPhase("RearDoorOpening");
+                    Check(ui.storyAnchors.RearDoorOpen, "Actual E callback opens rear door for first departure");
+                    SetPhase("FirstRearDoorOpening");
                     break;
-                case "RearDoorOpening":
-                    if (age < 1d) return;
-                    PlaceNear(ui.rearExitAnchor.position, ui.rearExitDistance - .15f);
+                case "FirstRearDoorOpening":
+                    if (age < 1.6d) return;
+                    PlaceNear(ui.rearExitAnchor.position, .1f);
                     Call("UpdateStoryMovement", false);
-                    Require(duel.Stage == DuelEncounter.EncounterStage.Rescue, "Actual rear-exit threshold did not start rescue.");
-                    Check(duel.RemainingEnemies == 5 && duel.EliteActor.Health == 600 && duel.EliteActor.GruntDamageHealthFloor == 1,
-                        "Rear exit starts five hostile grunts against the protected ally");
-                    Check(player.Health == player.MaxHealth, "Rescue entry restores full player health");
-                    SetPhase("ReturnToHelp");
+                    Require(Part == "ReturnToHelp" && duel.RescueCoverActive, "Actual outside rear anchor did not start the cover phase");
+                    report.departedThroughRear = !(bool)Call("IsInsideRearDoor");
+                    report.coverBeganOutside = report.departedThroughRear && !duel.IsCombatActive && !(bool)Get(ui, "hasHelped");
+                    Check(report.coverBeganOutside, "Cover starts while the player is outside and has not joined the third battle");
+                    Check(!ui.storyAnchors.RearDoorOpen, "Rear door closes after first departure");
+                    Capture("06_CoverBeginsOutside"); SetPhase("FrontDoorOpening");
                     break;
-                case "ReturnToHelp":
-                    if (age < 2.3d) return;
-                    PlaceNear(duel.EliteActor.transform.position, 2.8f);
+                case "FrontDoorOpening":
+                    if (!duel.RescueCoverActive || duel.RescueEntranceInProgress) return;
+                    Check(duel.RescueEnteredCount == 5 && duel.EnemyActors.Count(a => a != null && a.Team == CombatTeam.Enemy && !a.IsDefeated) == 5,
+                        "Five living reinforcements complete their actual front-door entrance during cover");
+                    Check(duel.EliteActor.GruntDamageHealthFloor == 1 && !duel.EliteActor.IsDefeated && !duel.IsCombatActive,
+                        "Protected ally holds off the reinforcements before the player joins");
+                    SetPhase("ObserveCover");
+                    break;
+                case "ObserveCover":
+                    if (age < .7d) return;
+                    Check(Part == "ReturnToHelp" && !duel.IsCombatActive && !(bool)Get(ui, "hasHelped"),
+                        "Waiting outside does not silently count as joining the rescue battle");
+                    // Stay clear of the shut door leaf/capsule overlap while
+                    // remaining inside the real 2m interaction radius.
+                    PlaceNear(ui.rearDoorAnchor.position + RearOutward() * 1.35f, .1f);
+                    Call("UpdateStoryMovement", true);
+                    Check(ui.storyAnchors.RearDoorOpen, "Actual E callback reopens rear door from outside for the return");
+                    SetPhase("ReturnRearDoorOpening");
+                    break;
+                case "ReturnRearDoorOpening":
+                    if (age < 1.6d) return;
+                    PlaceNear(duel.EliteActor.transform.position, 1.6f);
+                    report.returnedThroughRear = (bool)Call("IsInsideRearDoor");
+                    Require(report.returnedThroughRear, "Legal return fixture is not inside the rear door plane");
                     Call("UpdateStoryMovement", false);
-                    Require(Part == "JointFight", "Actual proximity after the skirmish did not enter the joint fight.");
+                    Require(View == "Dialogue", "Returning inside near the ally did not begin the actual support dialogue");
+                    Check(!duel.IsCombatActive && !(bool)Get(ui, "hasHelped"), "Support dialogue precedes formal player participation");
+                    Capture("07_ReturnSupportDialogue"); SetPhase("ReturnSupportDialogue");
+                    break;
+                case "ReturnSupportDialogue":
+                    if (View == "Dialogue") { AdvanceSpokenLine(); return; }
+                    Require(duel.Stage == DuelEncounter.EncounterStage.Rescue && Part == "JointFight", "Support dialogue did not start the formal rescue battle");
+                    report.joinedAfterReturn = report.returnedThroughRear && (bool)Get(ui, "hasHelped");
+                    Check(report.joinedAfterReturn, "Formal rescue begins only after returning and finishing the support dialogue");
+                    CheckBattleStartHealth(DuelEncounter.EncounterStage.Rescue, "Joining rescue restores full player health at the synchronous stage event");
+                    Check(!ui.storyAnchors.RearDoorOpen, "Rear door closes at the formal rescue checkpoint");
                     var attacker = duel.EnemyActors.First(a => a != null && !a.IsDefeated);
                     Require(duel.EliteActor.ReceiveDamage(attacker, duel.EliteActor.MaxHealth * 2, 0f, 0f, true), "Ally protection probe rejected.");
                     Check(duel.EliteActor.Health == 1 && !duel.EliteActor.IsDefeated && duel.Stage == DuelEncounter.EncounterStage.Rescue,
                         "Lethal grunt damage cannot kill the rescue ally or terminate the joint fight");
-                    Capture("06_JointFight"); EnterBattle();
+                    Capture("08_JointFight"); EnterBattle();
                     break;
                 case "FinalDialogue":
                     if (View == "Dialogue") { AdvanceSpokenLine(); return; }
-                    if (View != "Victory") return;
+                    if (Part != "FinalDeparture" || View != "Play") return;
                     CloseDialogueObservation();
-                    report.resultText = ((UnityEngine.UI.Text)Get(ui, "victoryStats")).text;
                     Check(duel.Stage == DuelEncounter.EncounterStage.Complete && duel.EliteActor.Team == CombatTeam.Player
-                        && !duel.EliteActor.IsDefeated, "Joint victory reaches the farewell/result with the ally alive");
-                    Capture("07_Victory"); SetPhase("ResultCapture");
+                        && !duel.EliteActor.IsDefeated, "Joint victory reaches farewell and a playable final departure with the ally alive");
+                    Check(report.dialogues.All(d => d.lines.All(l => !l.Contains("风尘未歇"))), "Epilogue text is not a page in the dialogue array");
+                    PlaceNear(ui.rearDoorAnchor.position - RearOutward() * .65f, .1f);
+                    Call("UpdateStoryMovement", true);
+                    Check(ui.storyAnchors.RearDoorOpen, "Actual E callback opens the rear door for the final departure");
+                    Capture("09_FinalRearDeparture"); SetPhase("FinalRearDoorOpening");
+                    break;
+                case "FinalRearDoorOpening":
+                    if (age < 1.6d) return;
+                    PlaceNear(ui.rearExitAnchor.position, .1f); Call("UpdateStoryMovement", false);
+                    report.finalDeparture = !(bool)Call("IsInsideRearDoor");
+                    Require(report.finalDeparture && View == "Epilogue", "Leaving by the rear anchor did not begin the independent epilogue");
+                    report.epilogueSeen = true; epilogueBegan = EditorApplication.timeSinceStartup;
+                    Capture("10_IndependentEpilogue"); SetPhase("Epilogue");
+                    break;
+                case "Epilogue":
+                    if (View == "Epilogue" && EditorApplication.timeSinceStartup - epilogueBegan >= 1.6d
+                        && !report.screenshots.Any(s => s.path.EndsWith("10b_EpilogueVisible.png", StringComparison.Ordinal)))
+                        Capture("10b_EpilogueVisible");
+                    if (View != "Victory") return;
+                    report.epilogueSeconds = (float)(EditorApplication.timeSinceStartup - epilogueBegan);
+                    Check(report.epilogueSeconds >= 2.5f, "Independent epilogue remains visible before victory settlement");
+                    report.resultText = ((UnityEngine.UI.Text)Get(ui, "victoryStats")).text;
+                    Capture("11_Victory"); SetPhase("ResultCapture");
                     break;
                 case "ResultCapture":
                     if (Time.frameCount >= phaseFrame + 4) Finish();
@@ -338,6 +453,7 @@ public static class Stage12StoryPlaythrough
         previousViewForward = Camera.main.transform.forward;
         practice = null;
     }
+    static Vector3 RearOutward() => Vector3.ProjectOnPlane(ui.rearExitAnchor.position - ui.rearDoorAnchor.position, Vector3.up).normalized;
     static void DrivePractice()
     {
         if (!ui.IsPracticing) return;
@@ -382,6 +498,7 @@ public static class Stage12StoryPlaythrough
             if (Cursor.lockState != CursorLockMode.Locked) practice.unlockedCursorFrames++;
             if (orbit.IsFramingActors) practice.framingFrames++;
             var sample = new LookSample { frame = Time.frameCount, cursor = Cursor.lockState.ToString(),
+                lastInjectedDynamicFrame = lastLookInputFrame, observedMouseDelta = Mouse.current.delta.ReadValue(),
                 focusedWindow = EditorWindow.focusedWindow != null ? EditorWindow.focusedWindow.GetType().Name : "None",
                 applicationFocused = Application.isFocused, orbitEnabled = orbit.enabled, framing = orbit.IsFramingActors,
                 hasTarget = orbit.target != null, dialoguePoseLocked = fighter.IsDialoguePoseActive,
@@ -406,24 +523,38 @@ public static class Stage12StoryPlaythrough
                 break;
             case 1:
                 fighter.MoveInput = Vector2.zero;
-                // Feed the real Input System delta consumed by OrbitCamera and InnPracticeGuide.
-                InputSystem.QueueDeltaStateEvent(Mouse.current.delta, new Vector2(16f, 0f));
+                // Injection is synchronized with the actual Dynamic input update
+                // in FeedPracticeMouse, never with this Editor update callback.
                 break;
             case 4:
                 fighter.GuardRequested = true;
                 break;
             default:
                 fighter.GuardRequested = false;
-                if (practice.requests != 0 || !fighter.IsGrounded || fighter.State != PrototypeFighter.ActionState.Ready
+                int requiredRequests = step == 3 && fighter.useSequentialHeavy ? 4 : 1;
+                if (practice.requests >= requiredRequests || !fighter.IsGrounded || fighter.State != PrototypeFighter.ActionState.Ready
                     || Time.time < (float)Get(fighter, "landingUntil") || player.IsStunned) return;
                 if (step == 5 && fighter.Stamina < fighter.dodgeStaminaCost || step == 6 && fighter.Stamina < fighter.jumpStaminaCost
                     || step == 7 && fighter.Stamina < fighter.skillStaminaCost) return;
                 practice.requests++;
                 practice.accepted = step == 2 ? fighter.Attack(false) : step == 3 ? fighter.Attack(true)
                     : step == 5 ? fighter.Dodge() : step == 6 ? fighter.Jump() : fighter.Skill();
-                Require(practice.accepted, "Single actual practice request rejected at step " + step);
+                Require(practice.accepted, "Actual practice request rejected at step " + step);
                 break;
         }
+    }
+    static void FeedPracticeMouse()
+    {
+        if (!report.active || InputState.currentUpdateType != InputUpdateType.Dynamic
+            || lastLookInputFrame == Time.frameCount || ui == null || !ui.IsPracticing || ui.PracticeStep != 1
+            || practice == null || practice.step != 1 || View != "Play" || Time.timeScale <= 0f || Mouse.current == null) return;
+        // A background native pointer event can replace a queued mouse delta.
+        // Supply the synthetic device state after the Dynamic update, before
+        // ordinary OrbitCamera and guide callbacks. Never set camera angles or
+        // tutorial progress; those still advance through normal runtime code.
+        InputState.Change(Mouse.current.delta, new Vector2(16f, 0f));
+        lastLookInputFrame = Time.frameCount;
+        practice.injectedDynamicFrames++;
     }
     static void RecoverLookInput()
     {
@@ -440,7 +571,11 @@ public static class Stage12StoryPlaythrough
         if (practice == null || practice.endFrame != 0) return;
         practice.endFrame = Time.frameCount; practice.endTime = Time.time; practice.groundedAtEnd = fighter.IsGrounded;
         if (practice.step >= 2 && practice.step != 4)
-            Check(practice.requests == 1 && practice.executedActions == 1, "Practice step " + practice.step + " uses exactly one successful real action");
+            {
+                int expected = practice.step == 3 && fighter.useSequentialHeavy ? 4 : 1;
+                Check(practice.requests == expected && practice.executedActions == expected,
+                    "Practice step " + practice.step + " uses " + expected + " successful real actions");
+            }
     }
     static void OnAction(CombatMotion motion)
     {
@@ -458,11 +593,35 @@ public static class Stage12StoryPlaythrough
         if (observedBattles.Add(battle))
         {
             report.battlesObserved++;
-            Check(player.Health == player.MaxHealth, battle + " begins with full player health");
+            // Rescue reaches this fixture phase only after the live entrance,
+            // which can include several seconds of legitimate enemy damage.
+            CheckBattleStartHealth(battle, battle + " begins with full player health");
         }
         SuspendBrains();
         nextBattleActionAt = Time.time + .45f;
         SetPhase("Battle");
+    }
+    static void OnBattleStageChanged(DuelEncounter.EncounterStage stage)
+    {
+        if (!report.active || (stage != DuelEncounter.EncounterStage.Tutorial
+            && stage != DuelEncounter.EncounterStage.EliteDuel && stage != DuelEncounter.EncounterStage.Rescue)) return;
+        CombatActor actor = duel.PlayerActor;
+        string stageName = stage.ToString();
+        var sample = new BattleStartSample { stage = stageName, frame = Time.frameCount, time = Time.time,
+            occurrence = report.battleStarts.Count(s => s.stage == stageName) + 1,
+            playerHealth = actor != null ? actor.Health : 0, playerMax = actor != null ? actor.MaxHealth : 0,
+            allyHealth = duel.EliteActor != null ? duel.EliteActor.Health : 0, allyMax = duel.EliteActor != null ? duel.EliteActor.MaxHealth : 0,
+            fullHealth = actor != null && actor.MaxHealth > 0 && actor.Health == actor.MaxHealth,
+            combatActive = duel.IsCombatActive, rescueEntranceInProgress = duel.RescueEntranceInProgress };
+        report.battleStarts.Add(sample);
+        Check(sample.combatActive && sample.fullHealth,
+            stage + " start callback " + sample.occurrence + " has full player health");
+    }
+    static void CheckBattleStartHealth(DuelEncounter.EncounterStage stage, string message)
+    {
+        var sample = report.battleStarts.LastOrDefault(s => s.stage == stage.ToString());
+        Check(sample != null && sample.combatActive && sample.fullHealth
+            && sample.playerMax > 0 && sample.playerHealth == sample.playerMax, message);
     }
     static void ObserveEntrance()
     {
@@ -528,7 +687,10 @@ public static class Stage12StoryPlaythrough
             for (int i = 0; i < 8; i++)
             {
                 Vector3 point = anchor + Quaternion.Euler(0f, i * 45f, 0f) * Vector3.forward * distance;
-                point.y = fighter.transform.position.y;
+                // Test setup must use the destination floor level. The rear
+                // yard is lower than the hall; carrying its current height to
+                // a hall candidate makes the floor probe start underground.
+                point.y = anchor.y;
                 Vector3 toward = Vector3.ProjectOnPlane(anchor - point, Vector3.up);
                 Quaternion facing = toward.sqrMagnitude > .001f ? Quaternion.LookRotation(toward) : fighter.transform.rotation;
                 if (!(bool)placement.Invoke(null, new object[] { motor, point, facing, float.NaN })) continue;
@@ -540,12 +702,28 @@ public static class Stage12StoryPlaythrough
     }
     static void SuspendBrains()
     {
+        bool entering = duel != null && (duel.RescueCoverActive || duel.Stage == DuelEncounter.EncounterStage.Rescue && duel.RescueEntranceInProgress);
+        if (entering && !protectingEntrancePlayer)
+        {
+            entrancePlayerWasInvulnerable = player.Invulnerable;
+            protectingEntrancePlayer = true;
+            player.Invulnerable = true;
+        }
+        else if (!entering && protectingEntrancePlayer)
+        {
+            player.Invulnerable = entrancePlayerWasInvulnerable;
+            protectingEntrancePlayer = false;
+        }
         foreach (var actor in CombatActor.Actors.ToArray())
         {
             if (actor == null) continue;
             var brain = actor.GetComponent<EnemyCombatAI>();
             if (brain == null) continue;
             if (!brains.ContainsKey(brain)) brains.Add(brain, brain.enabled);
+            // The first arrival must be free to approach its target and vacate
+            // the threshold. Disabling it here blocks the real queue behind it.
+            // Encounter logic still controls which outside actors may fight.
+            if (entering) { brain.enabled = brains[brain]; continue; }
             brain.enabled = false; actor.CancelAttack();
         }
     }
@@ -566,6 +744,7 @@ public static class Stage12StoryPlaythrough
             frame = Time.frameCount, time = Time.time, playerHealth = player.Health, playerMax = player.MaxHealth,
             allyHealth = duel.EliteActor != null ? duel.EliteActor.Health : 0, allyMax = duel.EliteActor != null ? duel.EliteActor.MaxHealth : 0,
             enemies = duel.RemainingEnemies, practiceStep = ui.PracticeStep, ledgerRead = ui.LedgerRead,
+            playerPosition = player.transform.position, rearDoorOpen = ui.storyAnchors != null && ui.storyAnchors.RearDoorOpen,
             sentryVisible = duel.TutorialActor.gameObject.activeInHierarchy, instructionsComplete = duel.TutorialInstructionsCompleted,
             allyProtected = duel.EliteActor != null && duel.EliteActor.GruntDamageHealthFloor > 0,
             playerPoseLocked = player.Animation.IsDialoguePoseActive });
@@ -593,6 +772,10 @@ public static class Stage12StoryPlaythrough
         if (report.failures.Count < 20) report.failures.Add(message);
     }
     static void Fail(string reason) { report.failures.Add(reason); Finish(); }
+    static void VerificationPlayState(PlayModeStateChange state)
+    { if (state == PlayModeStateChange.ExitingPlayMode && report.active) Fail("Play Mode ended during story verification."); }
+    static void VerificationReload()
+    { if (report.active) Fail("Assembly reload interrupted story verification."); else { RestoreFocusPauseGuard(); RestoreDiagnosticDevices(); } }
     static void Finish()
     {
         if (changingPhase) return;
@@ -610,14 +793,28 @@ public static class Stage12StoryPlaythrough
         catch (Exception e) { report.failures.Add("Restore title: " + e.GetBaseException().Message); }
         Application.runInBackground = oldBackground;
         InputSystem.settings.backgroundBehavior = oldInputBackground;
+        try
+        {
+            InputSystem.settings.editorInputBehaviorInPlayMode = oldEditorInputRouting;
+            report.editorInputRoutingAfter = InputSystem.settings.editorInputBehaviorInPlayMode.ToString();
+            report.editorInputRoutingRestored = InputSystem.settings.editorInputBehaviorInPlayMode == oldEditorInputRouting;
+        }
+        catch (Exception ex) { report.failures.Add("Restore Editor input routing: " + ex.GetBaseException().Message); }
+        RestoreDiagnosticDevices();
         if (report.battlesObserved != 3 || report.practice.Count != 8 || !report.framesAdvanced || !report.gameTimeAdvanced)
             report.failures.Add("The complete three-battle/live-practice sequence did not finish.");
         if (report.retryEachStage && report.retriesObserved != 3) report.failures.Add("Expected one actual result retry per battle.");
+        if (!report.departedThroughRear || !report.coverBeganOutside || !report.returnedThroughRear || !report.joinedAfterReturn
+            || !report.finalDeparture || !report.epilogueSeen)
+            report.failures.Add("Rear departure, outside cover, voluntary return, formal rescue and final epilogue sequence did not all complete.");
         foreach (var screenshot in report.screenshots)
         {
             screenshot.written = File.Exists(screenshot.path) && new FileInfo(screenshot.path).Length > 0;
             if (!screenshot.written) report.failures.Add("Screenshot was not written: " + screenshot.path);
         }
+        if (!report.focusPauseSuppressionRestored) report.failures.Add("Editor focus-pause verification guard did not restore its prior value.");
+        if (!report.diagnosticDevicesRestored) report.failures.Add("Diagnostic keyboard/mouse enabled states did not restore their original values.");
+        if (!report.editorInputRoutingRestored) report.failures.Add("Diagnostic Editor input routing did not restore its original value.");
         report.passed = report.failures.Count == 0 && report.runtimeErrors == 0 && report.returnedToTitle;
         report.phase = report.passed ? "Completed" : "Failed";
         if (string.IsNullOrEmpty(report.outputFolder)) report.outputFolder = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "Stage12Story_PreconditionFailure"));
@@ -628,6 +825,35 @@ public static class Stage12StoryPlaythrough
     static void Detach()
     {
         EditorApplication.update -= Tick; Application.logMessageReceived -= OnLog;
+        InputSystem.onAfterUpdate -= FeedPracticeMouse;
+        EditorApplication.playModeStateChanged -= VerificationPlayState;
+        AssemblyReloadEvents.beforeAssemblyReload -= VerificationReload;
+        if (duel != null) duel.StageChanged -= OnBattleStageChanged;
         if (fighter != null) fighter.ActionPerformed -= OnAction;
+        RestoreFocusPauseGuard();
+    }
+    static void RestoreFocusPauseGuard()
+    {
+        if (!focusPauseSuppressionSaved) return;
+        if (ui != null) ui.SuppressFocusPauseForVerification = oldFocusPauseSuppression;
+        report.focusPauseSuppressionRestored = ui == null || ui.SuppressFocusPauseForVerification == oldFocusPauseSuppression;
+        focusPauseSuppressionSaved = false;
+    }
+    static void RestoreDiagnosticDevices()
+    {
+        if (!diagnosticDevicesSaved) return;
+        try
+        {
+            if (savedKeyboard != null && savedKeyboard.added) { if (oldKeyboardEnabled) InputSystem.EnableDevice(savedKeyboard); else InputSystem.DisableDevice(savedKeyboard); }
+        }
+        catch (Exception ex) { report.failures.Add("Restore keyboard enabled state: " + ex.GetBaseException().Message); }
+        try
+        {
+            if (savedMouse != null && savedMouse.added) { if (oldMouseEnabled) InputSystem.EnableDevice(savedMouse); else InputSystem.DisableDevice(savedMouse); }
+        }
+        catch (Exception ex) { report.failures.Add("Restore mouse enabled state: " + ex.GetBaseException().Message); }
+        report.diagnosticDevicesRestored = (savedKeyboard == null || !savedKeyboard.added || savedKeyboard.enabled == oldKeyboardEnabled)
+            && (savedMouse == null || !savedMouse.added || savedMouse.enabled == oldMouseEnabled);
+        diagnosticDevicesSaved = false;
     }
 }
