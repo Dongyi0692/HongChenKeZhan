@@ -1,10 +1,10 @@
 # 红尘客栈 · 当前可编辑版试玩
 
-2026-11-18 本地共创合并版。当前工程包含 v6 战斗与流程、队友的序章和音频。队友的交接说明见 `Docs/Delivery/2026-11-18/HANDOFF.md`。
+2026-11-18 共创合并版 0.3.3。当前工程包含 v6 战斗与流程、队友的序章和音频。队友的交接说明见 `Docs/Delivery/2026-11-18/HANDOFF.md`。
 
 ## 打开方式
 
-1. Unity Hub 添加 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged`（包含 Assets、Packages、ProjectSettings 的整个目录）。
+1. 解压源码 ZIP 后，在 Unity Hub 添加同时包含 `Assets`、`Packages`、`ProjectSettings` 的工程目录。本机合并工程位于 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged`。
 2. 使用 Unity 6.3 LTS，精确版本 `6000.3.25f1`。
 3. 打开 `Assets/_Game/Scenes/InnDuel_Stage12_CollisionLighting.unity`，点击 Play，再选“开始游戏”。可以阅读或跳过序章。必要时点击 Game 画面捕获鼠标。
 

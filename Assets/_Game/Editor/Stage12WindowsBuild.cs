@@ -43,7 +43,7 @@ public static class Stage12WindowsBuild
             throw new InvalidOperationException("Windows build support is not installed.");
 
         PlayerSettings.productName = "红尘客栈";
-        PlayerSettings.bundleVersion = "0.3.2";
+        PlayerSettings.bundleVersion = "0.3.3";
         AssetDatabase.SaveAssets();
         Directory.CreateDirectory(folder);
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
