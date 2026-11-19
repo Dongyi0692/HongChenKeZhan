@@ -67,23 +67,25 @@ namespace FengChenInn
             }
             var source=voices[slot];source.Stop();source.transform.position=position;source.clip=clip;source.pitch=pitch;
             gains[slot]=gain;priorities[slot]=priority;started[slot]=AudioSettings.dspTime;
-            source.volume=0;source.Play();Balance();SoundPlayed?.Invoke(kind,clip);return true;
+            // Start at the intended level so the attack transient is not lost before
+            // the next Update; Balance immediately applies the shared overlap cap.
+            source.volume=gain;source.Play();Balance();SoundPlayed?.Invoke(kind,clip);return true;
         }
         public void Swing(CombatActor actor,CombatAttack attack,int strike)
         {
             AudioClip clip=attack.motion==CombatMotion.Light?light:heavy;
             if(strike>0&&combo.Length>0)clip=combo[(strike-1)%combo.Length];
             if(attack.motion==CombatMotion.Skill&&combo.Length>0)clip=combo[UnityEngine.Random.Range(0,combo.Length)];
-            if(Play("Swing",clip,actor.transform.position+Vector3.up,.32f,1,UnityEngine.Random.Range(.97f,1.03f)))SwingCount++;
+            if(Play("Swing",clip,actor.transform.position+Vector3.up,.55f,1,UnityEngine.Random.Range(.97f,1.03f)))SwingCount++;
         }
-        public void Hit(Vector3 at){if(Play("Hit",hit,at,.36f,3))HitCount++;}
-        public void Block(Vector3 at){if(Play("Block",block,at,.34f,3))BlockCount++;}
-        public void Dodge(Vector3 at){if(Play("Dodge",dodge,at,.32f,2))DodgeCount++;}
+        public void Hit(Vector3 at){if(Play("Hit",hit,at,.65f,3))HitCount++;}
+        public void Block(Vector3 at){if(Play("Block",block,at,.60f,3))BlockCount++;}
+        public void Dodge(Vector3 at){if(Play("Dodge",dodge,at,.42f,2))DodgeCount++;}
         public void Drop(Vector3 at)
         {
             if(drops.Length==0)return;int index=UnityEngine.Random.Range(0,drops.Length);
             if(drops.Length>1&&index==lastDrop)index=(index+1)%drops.Length;
-            if(Play("Drop",drops[index],at,.32f,2)){lastDrop=index;DropCount++;}
+            if(Play("Drop",drops[index],at,.48f,2)){lastDrop=index;DropCount++;}
         }
         void OnDestroy(){if(Instance==this)Instance=null;}
     }

@@ -32,6 +32,10 @@ namespace FengChenInn
         private static readonly Color Wood = new Color32(35, 27, 28, 250);
         private static readonly Color Line = new Color32(105, 81, 66, 255);
         private static readonly Color Ink = new Color32(16, 17, 22, 235);
+        private static readonly Color UiGold = new Color32(193, 153, 108, 255);
+        private static readonly Color UiIvory = new Color32(239, 214, 182, 255);
+        private static readonly Color UiVermilion = new Color32(122, 46, 35, 255);
+        private static readonly Color UiHairline = new Color32(128, 96, 67, 190);
         private static readonly Vector2 TopLeft = new(0, 1), Top = new(.5f, 1), TopRight = new(1, 1);
         private static readonly Vector2 Center = new(.5f, .5f), Bottom = new(.5f, 0), BottomLeft = Vector2.zero;
         private const string Pref = "FengChenInn.UI.";
@@ -59,8 +63,16 @@ namespace FengChenInn
         private UnityEngine.UI.Text warningTitle, warningAction, warningDirection, hintText, speaker, dialogue, pageCount, qualityText, resolutionText, fullscreenText;
         private UnityEngine.UI.Text shortLine, victoryStats, defeatStats, tutorialControls, lockStatus, objectiveDirection;
         private UnityEngine.UI.Image epilogueShade;
-        private UnityEngine.UI.Text epilogueTitle, epilogueCredit;
-        private float epilogueStartedAt;
+        private UnityEngine.UI.Image epilogueArt, epilogueBlackout, resultCurtain;
+        private UnityEngine.UI.Image epilogueRule;
+        private UnityEngine.UI.Text epilogueTitle;
+        private CanvasGroup victoryFade;
+        private bool victoryInputReady;
+        private readonly RectTransform[] settingsPages = new RectTransform[4];
+        private readonly UnityEngine.UI.Image[] settingsTabBrushes = new UnityEngine.UI.Image[4];
+        private readonly UnityEngine.UI.Text[] settingsTabLabels = new UnityEngine.UI.Text[4];
+        private float epilogueStartedAt, epilogueTransitionAt, victoryShownAt, completedFightLength;
+        private bool epilogueTransitioning, epilogueMouseWasDown;
         private int coverLineIndex;
         private float nextCoverLineAt;
         private View view, settingsReturn, tutorialReturn = View.Play;
@@ -86,6 +98,7 @@ namespace FengChenInn
         private float attackFeedbackUntil, defenseFeedbackUntil, targetFlashUntil, nextFeedbackSoundAt;
         private CombatActor lastHitTarget;
         private MenuAudio menuAudio;
+        private RescueCoverAudio rescueCoverAudio;
         private UiVictoryAudio uiVictoryAudio;
         private AudioSource feedbackAudio;
         private AudioClip strikeSound, blockSound, hurtSound;
@@ -119,6 +132,8 @@ namespace FengChenInn
             titleShade = MakeTexture(true);
             panelGrain = MakeTexture(false);
             menuAudio = gameObject.AddComponent<MenuAudio>();
+            rescueCoverAudio = gameObject.AddComponent<RescueCoverAudio>();
+            rescueCoverAudio.Initialize(duel);
             uiVictoryAudio = gameObject.AddComponent<UiVictoryAudio>();
             AudioListener.volume = PlayerPrefs.GetFloat(Pref + "volume", AudioListener.volume);
             int recommendedQuality = SystemInfo.graphicsDeviceName.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0
@@ -141,6 +156,8 @@ namespace FengChenInn
             BuildResult(true);
             BuildResult(false);
             BuildEpilogue();
+            resultCurtain = Paint(Fill(root, "结算淡入黑场"), Color.black, true);
+            resultCurtain.gameObject.SetActive(false);
             initialized = true;
             Show(View.Title);
         }
@@ -177,6 +194,7 @@ namespace FengChenInn
             }
             if (view == View.Victory || view == View.Defeat)
             {
+                if (view == View.Victory) UpdateVictoryFade();
                 if (keys != null && keys.rKey.wasPressedThisFrame) Restart(false);
                 return;
             }
@@ -521,6 +539,7 @@ namespace FengChenInn
 
         private void Restart(bool toTitle)
         {
+            rescueCoverAudio?.StopCover();
             uiVictoryAudio.ResetVictory();
             menuAudio.SetVictoryRain(false);
             if (!toTitle && (view == View.Defeat || duel.CanRetryCurrentBattle))
@@ -542,6 +561,9 @@ namespace FengChenInn
             if (storyAnchors != null) storyAnchors.SetRearDoorOpen(false);
             shortLineUntil = fightLength = arrivalAt = rescueAt = 0f;
             epilogueStartedAt = 0f;
+            epilogueTransitioning = false;
+            epilogueMouseWasDown = false;
+            completedFightLength = 0f;
             coverLineIndex = 0;
             nextCoverLineAt = 0f;
             battleStartFightLength = 0f;
@@ -549,6 +571,7 @@ namespace FengChenInn
             battleStartRearDoorOpen = false;
             lightHit = heavyHit = defended = hasHelped = heardAllyDown = resultStarted = false;
             Show(toTitle ? View.Title : View.Play);
+            resultCurtain.gameObject.SetActive(false);
         }
 
         private void RememberBattleStart()
@@ -560,6 +583,7 @@ namespace FengChenInn
 
         private void RetryCurrentBattle()
         {
+            rescueCoverAudio?.StopCover();
             if (!duel.RetryCurrentBattle())
             {
                 // Never discard completed fights when a checkpoint cannot be restored.
@@ -981,6 +1005,7 @@ namespace FengChenInn
         {
             if (duel.RescueCoverActive) { JoinRescue(); return; }
             if (!duel.BeginRescueCover()) { WaitForBattle(PendingBattle.Rescue); return; }
+            rescueCoverAudio?.BeginCover();
             pendingBattle = PendingBattle.None;
             part = StoryPart.ReturnToHelp;
             hasHelped = false;
@@ -1009,6 +1034,7 @@ namespace FengChenInn
                 Say("交战仍在继续 · 回到大堂，靠近斗笠客支援。", 4f);
                 return;
             }
+            rescueCoverAudio?.StopCover();
             pendingBattle = PendingBattle.None;
             part = StoryPart.JointFight;
             hasHelped = true;
@@ -1055,12 +1081,27 @@ namespace FengChenInn
 
         private void ShowVictory()
         {
-            victoryStats.text = $"{InnStoryScript.VictoryResult}\n战斗用时  {Mathf.RoundToInt(fightLength)} 秒";
-            // The final result follows the rear departure and epilogue. Play the
-            // one-shot victory cue here so the dialogue cannot consume it early.
-            uiVictoryAudio.StartVictory();
+            victoryStats.text = $"{InnStoryScript.VictoryResult}\n战斗用时  {Mathf.RoundToInt(completedFightLength)} 秒";
             menuAudio.SetVictoryRain(true);
+            victoryShownAt = Time.unscaledTime;
+            victoryInputReady = false;
+            victoryFade.alpha = 1f;
+            victoryFade.interactable = false;
+            victoryFade.blocksRaycasts = false;
+            resultCurtain.gameObject.SetActive(true);
+            SetAlpha(resultCurtain, 1f);
             Show(View.Victory);
+        }
+
+        private void UpdateVictoryFade()
+        {
+            float fade = Mathf.SmoothStep(0f, 1f, (Time.unscaledTime - victoryShownAt) / .45f);
+            SetAlpha(resultCurtain, 1f - fade);
+            if (fade >= 1f) resultCurtain.gameObject.SetActive(false);
+            if (fade >= 1f && (Mouse.current == null || !Mouse.current.leftButton.isPressed))
+                victoryInputReady = true;
+            victoryFade.interactable = victoryInputReady;
+            victoryFade.blocksRaycasts = victoryInputReady;
         }
 
         private void BeginEpilogue()
@@ -1068,20 +1109,38 @@ namespace FengChenInn
             part = StoryPart.Finished;
             input.StoryAllowsCombat = false;
             duel.StopCombat();
+            completedFightLength = fightLength;
             epilogueStartedAt = Time.unscaledTime;
-            SetAlpha(epilogueShade, 0f);
+            epilogueTransitioning = false;
+            epilogueMouseWasDown = Mouse.current != null && Mouse.current.leftButton.isPressed;
+            SetAlpha(epilogueShade, 1f);
+            SetAlpha(epilogueArt, 0f);
             SetAlpha(epilogueTitle, 0f);
-            SetAlpha(epilogueCredit, 0f);
+            SetAlpha(epilogueRule, 0f);
+            SetAlpha(epilogueBlackout, 0f);
             Show(View.Epilogue);
+            uiVictoryAudio.StartVictory();
         }
 
         private void UpdateEpilogue()
         {
             float age = Time.unscaledTime - epilogueStartedAt;
-            SetAlpha(epilogueShade, Mathf.SmoothStep(0f, 1f, age / .7f));
-            SetAlpha(epilogueTitle, Mathf.SmoothStep(0f, 1f, (age - .35f) / .55f));
-            SetAlpha(epilogueCredit, Mathf.SmoothStep(0f, 1f, (age - 1.2f) / .45f));
-            if (age >= 2.8f) ShowVictory();
+            SetAlpha(epilogueArt, Mathf.SmoothStep(0f, 1f, age / 1.25f));
+            SetAlpha(epilogueTitle, Mathf.SmoothStep(0f, 1f, (age - .3f) / .6f));
+            SetAlpha(epilogueRule, Mathf.SmoothStep(0f, 1f, (age - .3f) / .6f));
+            bool mouseDown = Mouse.current != null && Mouse.current.leftButton.isPressed;
+            bool newMousePress = mouseDown && !epilogueMouseWasDown;
+            epilogueMouseWasDown = mouseDown;
+            if (!epilogueTransitioning && age >= 1f && newMousePress)
+            {
+                epilogueTransitioning = true;
+                epilogueTransitionAt = Time.unscaledTime;
+                uiVictoryAudio.FadeOutVictory(1f);
+            }
+            if (!epilogueTransitioning) return;
+            float fade = Mathf.SmoothStep(0f, 1f, Time.unscaledTime - epilogueTransitionAt);
+            SetAlpha(epilogueBlackout, fade);
+            if (fade >= 1f) ShowVictory();
         }
 
         private static void SetAlpha(Graphic graphic, float alpha)
@@ -1341,8 +1400,6 @@ namespace FengChenInn
         {
             var layer = CreateView(View.Title);
             layer.gameObject.AddComponent<MainMenuV2>().Build(BeginStoryIntro, OpenSettings, Quit);
-            Label(layer, InnStoryScript.AICredit, 15, Muted, new Vector2(1, 0), new Vector2(-28, 14),
-                new Vector2(460, 24), TextAnchor.MiddleRight);
         }
 
         private void BuildTutorial()
@@ -1377,15 +1434,16 @@ namespace FengChenInn
         private void BuildDialogue()
         {
             var layer = CreateView(View.Dialogue);
-            var frame = Place(layer, "对话框", Bottom, Bottom, new Vector2(0, 42), new Vector2(940, 205));
-            Grain(frame);
-            Rule(frame, TopLeft, new Vector2(0, 0), new Vector2(940, 2));
-            speaker = Label(frame, "", 23, Plum, TopLeft, new Vector2(30, -14), new Vector2(330, 38));
-            dialogue = Label(frame, "", 25, Paper, TopLeft, new Vector2(30, -60), new Vector2(878, 89));
-            pageCount = Label(frame, "", 16, Muted, BottomLeft, new Vector2(30, 16), new Vector2(110, 30));
-            // The dialogue keeps its original look; only its hover sound stays muted.
-            Button(frame, "E  继续", new Vector2(1, 0), new Vector2(-28, 15), new Vector2(140, 36), AdvanceDialogue, false, false);
-            Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(30, 10), new Vector2(520, 26));
+            var frame = Place(layer, "深墨对话框", Bottom, Bottom, new Vector2(0, 20), new Vector2(1430, 234));
+            Paint(frame, new Color(.065f, .045f, .038f, .89f), true);
+            Border(frame, 1430, 234, UiHairline);
+            var namePlate = Place(frame, "说话人签", TopLeft, TopLeft, new Vector2(24, 25), new Vector2(230, 47));
+            Paint(namePlate, new Color(.17f, .10f, .075f, .96f));
+            speaker = Label(namePlate, "", 25, UiIvory, Center, Vector2.zero, new Vector2(206, 42), TextAnchor.MiddleCenter, true);
+            dialogue = Label(frame, "", 30, UiIvory, TopLeft, new Vector2(62, -49), new Vector2(1285, 105), TextAnchor.UpperLeft);
+            pageCount = Label(frame, "", 21, UiGold, BottomLeft, new Vector2(39, 18), new Vector2(150, 32));
+            Paint(Place(frame, "页数短线", BottomLeft, BottomLeft, new Vector2(176, 34), new Vector2(72, 1)), UiHairline);
+            ArtButton(frame, "E  继续  ›", new Vector2(1, 0), new Vector2(-35, 16), new Vector2(170, 41), AdvanceDialogue, false, false);
         }
 
         private void BuildLedger()
@@ -1459,11 +1517,15 @@ namespace FengChenInn
 
         private void BuildPause()
         {
-            var frame = Panel(CreateView(View.Pause), "雨歇片刻", "游戏暂停", 488, 468);
-            Button(frame, "继续游戏   Esc", Top, new Vector2(0, -142), new Vector2(354, 54), () => Show(View.Play), true);
-            Button(frame, "操作说明   F1", Top, new Vector2(0, -211), new Vector2(354, 54), OpenTutorial);
-            Button(frame, "设置", Top, new Vector2(0, -280), new Vector2(354, 54), OpenSettings);
-            Button(frame, "回到标题", Top, new Vector2(0, -349), new Vector2(354, 54), () => Restart(true));
+            var layer = CreateView(View.Pause);
+            Paint(Fill(layer, "场景压暗"), new Color(.025f, .018f, .018f, .72f), true);
+            Label(layer, "雨歇片刻", 20, UiGold, Top, new Vector2(0, -145), new Vector2(350, 36), TextAnchor.MiddleCenter);
+            Label(layer, "游戏暂停", 65, UiIvory, Top, new Vector2(0, -183), new Vector2(500, 90), TextAnchor.MiddleCenter, true);
+            Paint(Place(layer, "题下细线", Top, Top, new Vector2(0, -289), new Vector2(320, 1)), UiHairline);
+            ArtButton(layer, "继续游戏   Esc", Top, new Vector2(0, -338), new Vector2(390, 58), () => Show(View.Play), true);
+            ArtButton(layer, "操作说明   F1", Top, new Vector2(0, -417), new Vector2(390, 58), OpenTutorial);
+            ArtButton(layer, "设置", Top, new Vector2(0, -496), new Vector2(390, 58), OpenSettings);
+            ArtButton(layer, "回到标题", Top, new Vector2(0, -575), new Vector2(390, 58), () => Restart(true));
         }
 
         private void RestoreDisplaySettings()
@@ -1566,76 +1628,140 @@ namespace FengChenInn
 
         private Text StepperRow(RectTransform frame, float y, string value, Action onPrev, Action onNext)
         {
-            Button(frame, "<", TopLeft, new Vector2(274, y), new Vector2(46, 38), onPrev);
-            var label = Label(frame, value, 19, Paper, TopLeft, new Vector2(326, y), new Vector2(180, 38), TextAnchor.MiddleCenter);
-            Button(frame, ">", TopLeft, new Vector2(512, y), new Vector2(46, 38), onNext);
+            ArtButton(frame, "◀", TopLeft, new Vector2(274, y), new Vector2(48, 44), onPrev);
+            var label = Label(frame, value, 24, UiIvory, TopLeft, new Vector2(322, y), new Vector2(218, 44), TextAnchor.MiddleCenter);
+            ArtButton(frame, "▶", TopLeft, new Vector2(540, y), new Vector2(48, 44), onNext);
             return label;
         }
 
         private void BuildSettings()
         {
-            var frame = Panel(CreateView(View.Settings), "灯下整装", "设置", 1160, 650);
-            SettingLabel(frame, "总音量", -137);
-            SliderRow(frame, -138, 0, 1, AudioListener.volume, value =>
-            { AudioListener.volume = value; PlayerPrefs.SetFloat(Pref + "volume", value); });
-            SettingLabel(frame, "音乐音量", -190);
-            SliderRow(frame, -191, 0, 1, menuAudio.MusicVolume, menuAudio.SetMusicVolume);
-            SettingLabel(frame, "雨声音量", -243);
-            SliderRow(frame, -244, 0, 1, menuAudio.RainVolume, menuAudio.SetRainVolume);
-            SettingLabel(frame, "画质", -296);
-            var quality = Button(frame, "", TopLeft, new Vector2(274, -296), new Vector2(284, 38), () =>
+            var layer = CreateView(View.Settings);
+            var backdrop = Paint(Fill(layer, "设置柔化背景"), Color.white);
+            backdrop.sprite = Resources.Load<Sprite>("UIArt/SettingsBackdrop");
+            backdrop.preserveAspect = false;
+            backdrop.raycastTarget = false;
+            Paint(Fill(layer, "设置暗场"), new Color(.075f, .047f, .038f, .10f), true);
+            var left = Place(layer, "设置分类", TopLeft, TopLeft, new Vector2(205, -100), new Vector2(355, 660));
+            Label(left, "设置", 68, UiIvory, TopLeft, Vector2.zero, new Vector2(300, 95), TextAnchor.MiddleCenter, true);
+            Paint(Place(left, "分类分隔线", TopLeft, TopLeft, new Vector2(355, -90), new Vector2(1, 550)), UiHairline);
+            string[] tabs = { "图像", "声音", "控制", "其他" };
+            for (int i = 0; i < tabs.Length; i++)
             {
-                QualitySettings.SetQualityLevel((QualitySettings.GetQualityLevel() + 1) % QualitySettings.names.Length, true);
-                PlayerPrefs.SetInt(Pref + "quality", QualitySettings.GetQualityLevel());
-                UpdateQualityLabel();
-            });
-            qualityText = quality.GetComponentInChildren<Text>();
-            SettingLabel(frame, "分辨率", -349);
-            resolutionText = StepperRow(frame, -349, ResolutionLabel(ResolutionIndex()), PrevResolution, NextResolution);
-            SettingLabel(frame, "显示模式", -402);
-            var fullscreen = Button(frame, "", TopLeft, new Vector2(274, -402), new Vector2(284, 38), CycleDisplayMode);
-            fullscreenText = fullscreen.GetComponentInChildren<Text>();
-            fullscreenText.text = FullscreenLabels[FullscreenIndex()];
-            UpdateResolutionLabel();
-            SettingLabel(frame, "视角灵敏度", -455);
-            SliderRow(frame, -456, .04f, .32f, orbit != null ? orbit.sensitivity : .12f, value =>
-            { if (orbit != null) orbit.sensitivity = value; PlayerPrefs.SetFloat(Pref + "sensitivity", value); });
-            SettingLabel(frame, "垂直视角", -508);
-            ToggleRow(frame, -508, orbit != null && orbit.invertY, "反转", "正常", value =>
+                int index = i;
+                var button = ArtButton(left, tabs[i], TopLeft, new Vector2(17, -145 - i * 94), new Vector2(300, 70),
+                    () => SetSettingsTab(index), false, true, true);
+                settingsTabBrushes[i] = button.targetGraphic as Image;
+                settingsTabLabels[i] = button.GetComponentInChildren<Text>();
+            }
+            var right = Place(layer, "设置内容", TopLeft, TopLeft, new Vector2(640, -155), new Vector2(720, 565));
+            for (int i = 0; i < settingsPages.Length; i++)
+                settingsPages[i] = Fill(right, tabs[i] + "选项");
+            var imagePage = settingsPages[0];
+            var soundPage = settingsPages[1];
+            var controlPage = settingsPages[2];
+            var otherPage = settingsPages[3];
+
+            SettingLabel(imagePage, "画质", -32);
+            qualityText = StepperRow(imagePage, -32, QualitySettings.names[QualitySettings.GetQualityLevel()],
+                () => StepQuality(-1), () => StepQuality(1));
+            SettingLabel(imagePage, "分辨率", -125);
+            resolutionText = StepperRow(imagePage, -125, ResolutionLabel(ResolutionIndex()), PrevResolution, NextResolution);
+            SettingLabel(imagePage, "显示模式", -218);
+            fullscreenText = StepperRow(imagePage, -218, FullscreenLabels[FullscreenIndex()],
+                () => StepDisplayMode(-1), () => StepDisplayMode(1));
+            SettingLabel(imagePage, "视角灵敏度", -311);
+            SliderRow(imagePage, -311, .04f, .32f, orbit != null ? orbit.sensitivity : .12f, value =>
+            { if (orbit != null) orbit.sensitivity = value; PlayerPrefs.SetFloat(Pref + "sensitivity", value); }, true);
+
+            SettingLabel(soundPage, "总音量", -32);
+            SliderRow(soundPage, -32, 0, 1, AudioListener.volume, value =>
+            { AudioListener.volume = value; PlayerPrefs.SetFloat(Pref + "volume", value); });
+            SettingLabel(soundPage, "音乐音量", -125);
+            SliderRow(soundPage, -125, 0, 1, menuAudio.MusicVolume, menuAudio.SetMusicVolume);
+            SettingLabel(soundPage, "雨声音量", -218);
+            SliderRow(soundPage, -218, 0, 1, menuAudio.RainVolume, menuAudio.SetRainVolume);
+
+            SettingLabel(controlPage, "垂直视角", -32);
+            ToggleRow(controlPage, -32, orbit != null && orbit.invertY, "反转", "正常", value =>
             { if (orbit != null) orbit.invertY = value; PlayerPrefs.SetInt(Pref + "invert", value ? 1 : 0); });
-            Label(frame, "界面与结算", 23, Amber, TopLeft, new Vector2(616, -136), new Vector2(490, 38));
-            UiVolumeRow(frame, "悬停", -190, uiVictoryAudio.HoverVolume, uiVictoryAudio.SetHoverVolume);
-            UiVolumeRow(frame, "确认", -243, uiVictoryAudio.ConfirmVolume, uiVictoryAudio.SetConfirmVolume);
-            UiVolumeRow(frame, "翻页", -296, uiVictoryAudio.PageVolume, uiVictoryAudio.SetPageVolume);
-            UiVolumeRow(frame, "胜利音乐 B", -349, uiVictoryAudio.VictoryVolume, uiVictoryAudio.SetVictoryVolume);
-            Button(frame, "返回", Bottom, new Vector2(0, 25), new Vector2(240, 44), CloseSettings, true);
+            SettingLabel(otherPage, "悬停音效", -32);
+            SliderRow(otherPage, -32, 0, 1, uiVictoryAudio.HoverVolume, uiVictoryAudio.SetHoverVolume);
+            SettingLabel(otherPage, "确认音效", -125);
+            SliderRow(otherPage, -125, 0, 1, uiVictoryAudio.ConfirmVolume, uiVictoryAudio.SetConfirmVolume);
+            SettingLabel(otherPage, "翻页音效", -218);
+            SliderRow(otherPage, -218, 0, 1, uiVictoryAudio.PageVolume, uiVictoryAudio.SetPageVolume);
+            SettingLabel(otherPage, "胜利音乐 B", -311);
+            SliderRow(otherPage, -311, 0, 1, uiVictoryAudio.VictoryVolume, uiVictoryAudio.SetVictoryVolume);
+            ArtButton(layer, "Esc  返回", new Vector2(1, 0), new Vector2(-90, 42), new Vector2(240, 52), CloseSettings);
+            SetSettingsTab(0);
+            UpdateResolutionLabel();
+        }
+
+        private void SetSettingsTab(int index)
+        {
+            for (int i = 0; i < settingsPages.Length; i++)
+            {
+                settingsPages[i].gameObject.SetActive(i == index);
+                settingsTabBrushes[i].color = i == index ? Color.white : new Color(1f, 1f, 1f, 0f);
+                settingsTabLabels[i].color = i == index ? UiIvory : UiGold;
+            }
+        }
+
+        private void StepQuality(int direction)
+        {
+            int count = QualitySettings.names.Length;
+            QualitySettings.SetQualityLevel((QualitySettings.GetQualityLevel() + direction + count) % count, true);
+            PlayerPrefs.SetInt(Pref + "quality", QualitySettings.GetQualityLevel());
+            UpdateQualityLabel();
+        }
+
+        private void StepDisplayMode(int direction)
+        {
+            if (Time.frameCount < displayApplyFrame) return;
+            int count = FullscreenOptions.Length;
+            RequestDisplay(Screen.width, Screen.height, FullscreenOptions[(FullscreenIndex() + direction + count) % count]);
         }
 
         private void BuildResult(bool won)
         {
             var layer = CreateView(won ? View.Victory : View.Defeat);
-            var frame = Panel(layer, won ? "雨夜余声" : "客栈折剑", won ? "此夜得脱" : "落败", 600, 408);
-            var result = Label(frame, won ? "交手结果  胜" : "交手结果  败\n重试本段，已完成的战斗保留。", 22, Paper,
-                TopLeft, new Vector2(39, -141), new Vector2(524, 73));
+            if (won) victoryFade = layer.gameObject.AddComponent<CanvasGroup>();
+            ArtBackground(layer, won ? new Color(.10f, .045f, .025f, .73f) : new Color(.006f, .015f, .027f, .84f));
+            Label(layer, won ? "此夜得脱" : "落败", won ? 76 : 74, UiIvory,
+                Top, new Vector2(0, -92), new Vector2(780, 110), TextAnchor.MiddleCenter, true);
+            Paint(Place(layer, "结算题下细线", Top, Top, new Vector2(0, -208), new Vector2(645, 1)), UiHairline);
+            Label(layer, "交手结果", 25, UiGold, Top, new Vector2(-135, -254), new Vector2(240, 42), TextAnchor.MiddleLeft);
+            Label(layer, won ? "胜" : "败", 31, UiIvory, Top, new Vector2(130, -254), new Vector2(150, 42), TextAnchor.MiddleLeft, true);
+            var result = Label(layer, won ? InnStoryScript.VictoryResult : InnStoryScript.TutorialDefeatResult,
+                24, UiIvory, Top, new Vector2(0, -322), new Vector2(890, 103), TextAnchor.MiddleCenter);
             if (won) victoryStats = result;
             else defeatStats = result;
-            Button(frame, won ? "再玩一次   R" : "重试本段   R", Top, new Vector2(0, -235), new Vector2(456, 52), () => Restart(false), true);
-            Button(frame, won ? "回到标题" : "退出游戏", Top, new Vector2(0, -303), new Vector2(456, 48),
+            ArtButton(layer, won ? "▶  再玩一次   R" : "▶  重试本段   R", Top,
+                new Vector2(won ? -205 : 0, -483), new Vector2(350, 66), () => Restart(false), true);
+            ArtButton(layer, won ? "回到标题" : "退出游戏", Top,
+                new Vector2(won ? 205 : 0, won ? -483 : -573), new Vector2(350, 66),
                 won ? () => Restart(true) : Quit);
-            Label(layer, InnStoryScript.AICredit, 16, Muted, BottomLeft, new Vector2(84, 37), new Vector2(520, 28));
         }
 
         private void BuildEpilogue()
         {
             var layer = CreateView(View.Epilogue);
             epilogueShade = Paint(Fill(layer, "雨夜淡出"), Color.black, true);
-            epilogueTitle = Label(layer, InnStoryScript.ClosingTitle, 54, Paper,
-                Center, new Vector2(0, 12), new Vector2(720, 104), TextAnchor.MiddleCenter, display: true);
-            epilogueCredit = Label(layer, InnStoryScript.AICredit, 16, Muted,
-                BottomLeft, new Vector2(44, 28), new Vector2(600, 28));
-            SetAlpha(epilogueShade, 0f);
+            epilogueArt = Paint(Fill(layer, "终幕雨夜背景"), Color.white);
+            epilogueArt.sprite = Resources.Load<Sprite>("UIArt/EpilogueBackdrop");
+            epilogueArt.preserveAspect = true;
+            epilogueArt.raycastTarget = false;
+            epilogueTitle = Label(layer, InnStoryScript.ClosingTitle, 65, UiIvory,
+                Center, new Vector2(0, 33), new Vector2(760, 115), TextAnchor.MiddleCenter, display: true);
+            epilogueRule = Paint(Place(layer, "终幕题下细线", Center, Center, new Vector2(0, -66), new Vector2(84, 2)), UiHairline);
+            Paint(Fill(layer, "终幕全屏交互层"), new Color(0f, 0f, 0f, 0f), true);
+            epilogueBlackout = Paint(Fill(layer, "终幕转场黑场"), Color.black, true);
+            SetAlpha(epilogueBlackout, 0f);
+            SetAlpha(epilogueShade, 1f);
+            SetAlpha(epilogueArt, 0f);
             SetAlpha(epilogueTitle, 0f);
-            SetAlpha(epilogueCredit, 0f);
+            SetAlpha(epilogueRule, 0f);
         }
 
         private void TitleBackdrop(RectTransform layer)
@@ -1669,8 +1795,11 @@ namespace FengChenInn
             grain.raycastTarget = false;
         }
 
-        private void SettingLabel(RectTransform frame, string label, float y) =>
-            Label(frame, label, 22, Paper, TopLeft, new Vector2(39, y), new Vector2(196, 38));
+        private void SettingLabel(RectTransform frame, string label, float y)
+        {
+            Label(frame, label, 24, UiGold, TopLeft, new Vector2(39, y), new Vector2(215, 44));
+            Paint(Place(frame, "设置行细线", TopLeft, TopLeft, new Vector2(35, y - 71), new Vector2(565, 1)), UiHairline);
+        }
 
         private void UiVolumeRow(RectTransform frame, string label, float y, float initial, Action<float> changed)
         {
@@ -1692,31 +1821,77 @@ namespace FengChenInn
         {
             bool value = initial;
             Text text = null;
-            var button = Button(frame, value ? on : off, TopLeft, new Vector2(274, y), new Vector2(284, 38), () =>
+            var button = ArtButton(frame, value ? on : off, TopLeft, new Vector2(274, y), new Vector2(284, 44), () =>
             { value = !value; changed(value); text.text = value ? on : off; });
             text = button.GetComponentInChildren<Text>();
         }
 
-        private void SliderRow(RectTransform frame, float y, float min, float max, float initial, Action<float> changed)
+        private void SliderRow(RectTransform frame, float y, float min, float max, float initial, Action<float> changed, bool decimalValue = false)
         {
-            var holder = Place(frame, "滑杆", TopLeft, TopLeft, new Vector2(274, y), new Vector2(222, 38));
+            var holder = Place(frame, "滑杆", TopLeft, TopLeft, new Vector2(274, y), new Vector2(222, 44));
             var slider = holder.gameObject.AddComponent<Slider>();
-            var track = Place(holder, "底轨", Center, Center, Vector2.zero, new Vector2(218, 6));
-            Paint(track, Line, true);
+            var track = Place(holder, "底轨", Center, Center, Vector2.zero, new Vector2(218, 4));
+            Paint(track, UiHairline, true);
             var slide = Fill(holder, "滑动区域");
             slide.offsetMin = new Vector2(9, 0);
             slide.offsetMax = new Vector2(-9, 0);
-            var handle = Place(slide, "滑钮", Center, Center, Vector2.zero, new Vector2(18, 26));
-            slider.targetGraphic = Paint(handle, Amber, true);
+            var handle = Place(slide, "滑钮", Center, Center, Vector2.zero, new Vector2(17, 17));
+            slider.targetGraphic = Paint(handle, UiIvory, true);
             slider.handleRect = handle;
             slider.minValue = min;
             slider.maxValue = max;
             slider.value = initial;
-            var valueText = Label(frame, SliderLabel(initial, min, max), 18, Muted, TopLeft, new Vector2(508, y), new Vector2(61, 38), TextAnchor.MiddleRight);
-            slider.onValueChanged.AddListener(value => { changed(value); valueText.text = SliderLabel(value, min, max); });
+            var valueText = Label(frame, decimalValue ? initial.ToString("0.00") : SliderLabel(initial, min, max), 21,
+                UiGold, TopLeft, new Vector2(508, y), new Vector2(76, 44), TextAnchor.MiddleRight);
+            slider.onValueChanged.AddListener(value =>
+            { changed(value); valueText.text = decimalValue ? value.ToString("0.00") : SliderLabel(value, min, max); });
         }
 
         private static string SliderLabel(float value, float min, float max) => $"{Mathf.RoundToInt(Mathf.InverseLerp(min, max, value) * 100)}%";
+
+        private void ArtBackground(RectTransform layer, Color tint)
+        {
+            var background = Paint(Fill(layer, "雨夜客栈无字背景"), Color.white);
+            background.sprite = Resources.Load<Sprite>("StoryIntro/PNG/00_雨夜客栈_无UI背景");
+            background.preserveAspect = false;
+            background.raycastTarget = false;
+            Paint(Fill(layer, "结算夜色"), tint, true);
+        }
+
+        private static void Border(RectTransform frame, float width, float height, Color color)
+        {
+            Paint(Place(frame, "金边上", TopLeft, TopLeft, Vector2.zero, new Vector2(width, 1)), color);
+            Paint(Place(frame, "金边下", BottomLeft, BottomLeft, Vector2.zero, new Vector2(width, 1)), color);
+            Paint(Place(frame, "金边左", TopLeft, TopLeft, Vector2.zero, new Vector2(1, height)), color);
+            Paint(Place(frame, "金边右", TopRight, TopRight, Vector2.zero, new Vector2(1, height)), color);
+        }
+
+        private Button ArtButton(RectTransform parent, string title, Vector2 anchor, Vector2 pos, Vector2 size,
+            Action onClick, bool primary = false, bool hoverSound = true, bool navigationBrush = false)
+        {
+            var rect = Place(parent, title, anchor, anchor, pos, size);
+            var image = Paint(rect, Color.white, true);
+            bool brush = primary || navigationBrush;
+            if (brush) image.sprite = Resources.Load<Sprite>("StoryIntro/PNG/03a_标题红色笔刷");
+            else image.color = new Color(1f, 1f, 1f, 0f);
+            var button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            button.transition = Selectable.Transition.None;
+            if (!brush)
+                Paint(Place(rect, "文字下细线", Bottom, Bottom, new Vector2(0, 3), new Vector2(size.x * .72f, 1)), UiHairline);
+            var caption = Label(rect, title, size.y > 60 ? 27 : 23, UiIvory, Center, Vector2.zero,
+                new Vector2(size.x - 16, size.y - 4), TextAnchor.MiddleCenter, primary);
+            var trigger = rect.gameObject.AddComponent<EventTrigger>();
+            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            enter.callback.AddListener(_ => caption.color = Color.white);
+            trigger.triggers.Add(enter);
+            var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+            exit.callback.AddListener(_ => caption.color = navigationBrush && image.color.a < .5f ? UiGold : UiIvory);
+            trigger.triggers.Add(exit);
+            UiButtonSound.Bind(button, hoverSound);
+            button.onClick.AddListener(() => onClick());
+            return button;
+        }
 
         private Button Button(RectTransform parent, string title, Vector2 anchor, Vector2 pos, Vector2 size, Action onClick, bool primary = false, bool hoverSound = true)
         {

@@ -116,7 +116,7 @@ public static class PrototypeSetup
         if (font == null) throw new System.InvalidOperationException("Import TMP Essential Resources before creating Action Lab.");
         var state = HudText(canvas.transform,font,"State",new Vector2(0.02f,0.83f),new Vector2(0.6f,0.98f),22);
         var controls = HudText(canvas.transform,font,"Controls",new Vector2(0.02f,0.03f),new Vector2(0.98f,0.18f),19);
-        controls.text = "WASD  Strafe    MOUSE  Turn    SPACE  Jump    L-CTRL  Hold to crouch\nLMB  Light    RMB  Heavy    Q  Hold to guard    L-SHIFT  Step / backstep    R  Reset\nPrototype geometry and procedural poses / GPT-assisted development";
+        controls.text = "WASD  Strafe    MOUSE  Turn    SPACE  Jump    L-CTRL  Hold to crouch\nLMB  Light    RMB  Heavy    Q  Hold to guard    L-SHIFT  Step / backstep    R  Reset";
         var hud = canvas.AddComponent<ActionHud>(); hud.fighter = fighter; hud.statusText = state;
     }
     private static TMP_Text HudText(Transform parent, TMP_FontAsset font, string name, Vector2 min, Vector2 max, int size)

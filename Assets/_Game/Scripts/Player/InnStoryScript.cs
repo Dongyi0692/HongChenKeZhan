@@ -153,6 +153,5 @@ namespace FengChenInn
         internal const string TutorialDefeatResult = "去路被截。";
         internal const string EliteDefeatResult = "去路未开。";
         internal const string RescueDefeatResult = "突围未成。";
-        internal const string AICredit = "AI 辅助制作 · Aholo Lux3D / GPT";
     }
 }

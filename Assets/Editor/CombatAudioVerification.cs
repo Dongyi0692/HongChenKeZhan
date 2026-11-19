@@ -101,7 +101,14 @@ public static class CombatAudioVerification
         Place();target.transform.position=new Vector3(20,.24f,0);yield return .5;swings=audio.SwingCount;hits=audio.HitCount;
         foreach(var wait in StartAttack(true))yield return wait;
         foreach(var wait in EndAttack())yield return wait;
-        Check(audio.SwingCount==swings+fighter.heavyAttack.hitWindows.Length&&audio.HitCount==hits,"Four-strike heavy combo plays four separate synchronized swings on a miss");
+        if(fighter.useSequentialHeavy)
+            for(int step=1;step<fighter.heavyAttack.hitWindows.Length;step++) {
+                foreach(var wait in StartAttack(true))yield return wait;
+                foreach(var wait in EndAttack())yield return wait;
+            }
+        Check(audio.SwingCount==swings+fighter.heavyAttack.hitWindows.Length&&audio.HitCount==hits,
+            fighter.useSequentialHeavy ? "Four accepted heavy inputs play four separate synchronized swings on a miss"
+                : "Four-strike heavy combo plays four separate synchronized swings on a miss");
         Place();target.transform.position=new Vector3(20,.24f,0);yield return .5;
         int dodge=audio.DodgeCount;double deadline=EditorApplication.timeSinceStartup+3;
         while(fighter.State!=PrototypeFighter.ActionState.Dodge&&EditorApplication.timeSinceStartup<deadline){fighter.Dodge();yield return .025;}

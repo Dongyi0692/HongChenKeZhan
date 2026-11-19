@@ -9,10 +9,12 @@ namespace FengChenInn
     {
         public static UiVictoryAudio Instance { get; private set; }
         const string Key = "FengChenInn.UI.";
-        AudioSource ui, victory;
+        AudioSource ui, victory, victoryOverlap;
         AudioClip hover, confirm, page, ledgerPage, victoryClip;
-        float hoverAt = -10, target, envelope;
-        bool started;
+        float hoverAt = -10, target, envelope, fadeOutSeconds = 1.8f;
+        double victoryStart, overlapStart, nextLoopStart;
+        bool started, running;
+        const float LoopOverlapSeconds = 1.4f;
         public int HoverCount { get; private set; }
         public int ConfirmCount { get; private set; }
         public int PageCount { get; private set; }
@@ -22,7 +24,7 @@ namespace FengChenInn
         public float ConfirmVolume { get; private set; }
         public float PageVolume { get; private set; }
         public float VictoryVolume { get; private set; }
-        public bool VictoryPlaying => victory && victory.isPlaying;
+        public bool VictoryPlaying => running && ((victory && victory.isPlaying) || (victoryOverlap && victoryOverlap.isPlaying));
         // Exposed for the Play Mode audit; nothing else drives these directly.
         public AudioClip VictoryClip => victoryClip;
         public AudioSource VictorySource => victory;
@@ -47,7 +49,9 @@ namespace FengChenInn
             victoryClip = Resources.Load<AudioClip>("UiVictory/Victory_B_Softer_100-116s");
             ui = MakeSource("UI one shots");
             victory = MakeSource("Victory B once");
+            victoryOverlap = MakeSource("Victory B loop overlap");
             victory.clip = victoryClip;
+            victoryOverlap.clip = victoryClip;
             if (!victoryClip) Debug.LogError("Victory B music is missing", this);
         }
         AudioSource MakeSource(string label)
@@ -97,27 +101,74 @@ namespace FengChenInn
             if (!victoryClip) return;
             // One cue per completion. Re-entering the result screen or re-arming the
             // fade must never restart the music; only ResetVictory (new run) clears it.
-            if (started) { target = 1; return; }
+            if (started) return;
             started = true;
+            running = true;
             target = 1;
             envelope = 0;
             victory.volume = 0;
-            victory.Play();
+            victoryOverlap.volume = 0;
+            double period = victoryClip.length - LoopOverlapSeconds;
+            victoryStart = AudioSettings.dspTime + .05d;
+            overlapStart = victoryStart + period;
+            nextLoopStart = overlapStart + period;
+            victory.PlayScheduled(victoryStart);
+            victoryOverlap.PlayScheduled(overlapStart);
             VictoryCount++;
         }
-        public void LeaveVictory() { target = 0; }
+        public void FadeOutVictory(float seconds)
+        {
+            fadeOutSeconds = Mathf.Max(.1f, seconds);
+            target = 0f;
+        }
+        public void LeaveVictory() { FadeOutVictory(1.8f); }
         public void ResetVictory()
         {
             target = envelope = 0;
             started = false;
+            running = false;
             if (victory) victory.Stop();
+            if (victoryOverlap) victoryOverlap.Stop();
         }
         void Update()
         {
-            if (!victory) return;
-            envelope = Mathf.MoveTowards(envelope, target, Time.unscaledDeltaTime / (target > envelope ? 1.3f : 1.8f));
-            victory.volume = envelope * VictoryVolume;
-            if (target == 0 && envelope == 0 && victory.isPlaying) victory.Stop();
+            if (!running || !victoryClip) return;
+            envelope = Mathf.MoveTowards(envelope, target, Time.unscaledDeltaTime / (target > envelope ? 1.3f : fadeOutSeconds));
+            double now = AudioSettings.dspTime;
+            if (target > 0f)
+            {
+                if (now >= victoryStart + victoryClip.length)
+                {
+                    victory.Stop();
+                    victoryStart = nextLoopStart;
+                    nextLoopStart += victoryClip.length - LoopOverlapSeconds;
+                    victory.PlayScheduled(victoryStart);
+                }
+                if (now >= overlapStart + victoryClip.length)
+                {
+                    victoryOverlap.Stop();
+                    overlapStart = nextLoopStart;
+                    nextLoopStart += victoryClip.length - LoopOverlapSeconds;
+                    victoryOverlap.PlayScheduled(overlapStart);
+                }
+            }
+            // Leave headroom even if the victory slider is set to 100% during the overlap.
+            victory.volume = LoopVolume(now - victoryStart) * envelope * VictoryVolume * .9f;
+            victoryOverlap.volume = LoopVolume(now - overlapStart) * envelope * VictoryVolume * .9f;
+            if (target == 0f && envelope == 0f)
+            {
+                victory.Stop();
+                victoryOverlap.Stop();
+                running = false;
+            }
+        }
+
+        float LoopVolume(double age)
+        {
+            if (age < 0d || age >= victoryClip.length) return 0f;
+            float head = Mathf.Clamp01((float)age / LoopOverlapSeconds);
+            float tail = Mathf.Clamp01((victoryClip.length - (float)age) / LoopOverlapSeconds);
+            return Mathf.Sin(head * Mathf.PI * .5f) * Mathf.Sin(tail * Mathf.PI * .5f);
         }
     }
 

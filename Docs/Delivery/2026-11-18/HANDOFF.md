@@ -27,6 +27,7 @@
 - 木门：`InnEntranceDoors.cs`、`InnRearExitDoor.cs`、`InnDoorAudio.cs`；动作和音效的对应说明见 `Docs/DoorAudioIntegration.md`。
 - 脚步：`HongfuFootsteps.cs`、`FootstepSurface.cs`、`FootstepAnimationEvents.cs`；`WetGround` 和 `WoodFloor` 的处理片段在 `Assets/_Game/Resources/Footsteps/`。
 - 战斗音效：`CombatAudioSystem.cs`、`CombatAudioEmitter.cs`、`WeaponDropAudio.cs` 和 `Resources/CombatAudio/`。武器落地片段已制备；如新增真正的脱手/落地动作，应接在实际事件上，不要凭固定计时器或无画面的归鞘动作播放。
+- 后门外屋内掩护声：`RescueCoverAudio.cs` 复用木地板单步素材，随后在真实交手开始时淡入用户选定的 `SwordBattle2.wav` 远处录音。原件、处理版和 CC0 来源见 `Docs/RescueCoverAudioIntegration.md`；不替代真实攻击、命中、格挡事件。
 - UI、序章翻页和胜利 B：`UiVictoryAudio.cs`、`StoryIntroPanel.cs`、`Assets/Audio/UI/`、`Resources/UiVictory/`。不要把早期测试报告当成对所有后续代码改动的复测。
 - 用户提供的连续原始录音及 UI、胜利原素材保存在 `Assets/_Game/AudioSources/`；处理后版本另存，不要覆盖原文件。对应说明见 `Docs/*AudioIntegration.md`，测试记录见 `Docs/AudioVerification/`。
 

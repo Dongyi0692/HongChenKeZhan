@@ -6,8 +6,10 @@ using System.Reflection;
 using FengChenInn;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 // Actual Stage12 UI callbacks, practice observation and live animation frames.
@@ -68,7 +70,7 @@ public static class Stage12StoryPlaythrough
     }
     [Serializable] public sealed class Report
     {
-        public string scope = "Existing Stage12 scene. Ledger/E/result callbacks are real UI entry points; movement, synthetic mouse delta supplied through InputState.Change in InputSystem Dynamic onAfterUpdate, public action requests and animation completion are observed over real frames. Mouse input is injected only in actual practice step 1 and consumed by normal OrbitCamera/guide updates. AI Updates are temporarily suspended except during the outside cover phase and real front-door reinforcement entrance, when normal AI must clear the doorway and continue the cover battle. Full-health entry checks sample the synchronous formal battle StageChanged callback, excluding RescueCover. ReceiveDamage deliberately advances battle outcomes and explicitly tests the ally health floor. Position fixtures precede observations, including legal locations on both sides of the existing rear door and near the ally; E/anchor callbacks and actual door rotation time are still used. These fixtures are not a manual traversal/pathfinding acceptance. No tutorial counters or completion flags are forged, no scene is created/saved. The Editor-only SuppressFocusPauseForVerification switch is temporarily enabled and restored to isolate external focus loss; actual UI initialized/update remains enabled. This is not a verification of normal focus-pause behavior. Final rear departure must reach an independent Epilogue view before Victory.";
+        public string scope = "Existing Stage12 scene. Ledger/E/result callbacks are real UI entry points; movement, synthetic mouse delta supplied through InputState.Change in InputSystem Dynamic onAfterUpdate, public action requests and animation completion are observed over real frames. Mouse input is injected in practice step 1 and as a fresh click after 18 seconds on the epilogue. AI Updates are temporarily suspended except during the outside cover phase and real front-door reinforcement entrance, when normal AI must clear the doorway and continue the cover battle. Full-health entry checks sample the synchronous formal battle StageChanged callback, excluding RescueCover. ReceiveDamage deliberately advances battle outcomes and explicitly tests the ally health floor. Position fixtures precede observations, including legal locations on both sides of the existing rear door and near the ally; E/anchor callbacks and actual door rotation time are still used. These fixtures are not a manual traversal/pathfinding acceptance. No tutorial counters or completion flags are forged, no scene is created/saved. The Editor-only SuppressFocusPauseForVerification switch is temporarily enabled and restored to isolate external focus loss; actual UI initialized/update remains enabled. This is not a verification of normal focus-pause behavior. Final rear departure must reach an independent Epilogue view before Victory.";
         public string phase = "NotStarted", scene, outputFolder, resultText;
         public bool active, completed, passed, retryEachStage, framesAdvanced, gameTimeAdvanced, returnedToTitle;
         public bool departedThroughRear, coverBeganOutside, returnedThroughRear, joinedAfterReturn, finalDeparture, epilogueSeen;
@@ -113,6 +115,13 @@ public static class Stage12StoryPlaythrough
     static string previousDialogueLine;
     static float nextBattleActionAt;
     static double epilogueBegan;
+    static int epilogueClickPhase;
+    static bool epilogueLoopChecked;
+    static bool epilogueGuardChecked;
+    static bool victoryScreenshotRequested;
+    static Button resultClickTarget;
+    static int resultClickPhase;
+    static int victoryCountAtStart;
     static int nextLookFocusRecoveryFrame;
     static int lastLookInputFrame = -1;
     static string View => Get(ui, "view").ToString();
@@ -133,6 +142,12 @@ public static class Stage12StoryPlaythrough
         Detach(); RestoreDiagnosticDevices(); brains.Clear(); observedBattles.Clear(); retriedBattles.Clear();
         fighter = null; ui = null; player = null; dialogue = null; practice = null;
         entranceObserved = false; changingPhase = false; protectingEntrancePlayer = false; lastLookInputFrame = -1;
+        epilogueClickPhase = 0;
+        epilogueLoopChecked = false;
+        epilogueGuardChecked = false;
+        victoryScreenshotRequested = false;
+        resultClickTarget = null;
+        resultClickPhase = 0;
         report = new Report { retryEachStage = retries, frameStart = Time.frameCount, timeStart = Time.time };
         report.scope += " Keyboard/mouse enabled states are saved; disabled devices are explicitly enabled only after the test selects IgnoreFocus and checked before proceeding. Original device enabled states are independently restored on every exit. Synthetic mouse events do not verify hardware input or normal focus-loss handling.";
         report.scope += " Editor input routing is temporarily AllDeviceInputAlwaysGoesToGameView and independently restored; the InputSettings asset is never saved by this fixture.";
@@ -177,6 +192,7 @@ public static class Stage12StoryPlaythrough
             Type gameView = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
             if (gameView != null) EditorWindow.GetWindow(gameView).Focus();
             Call("Restart", true); player = duel.PlayerActor;
+            victoryCountAtStart = UiVictoryAudio.Instance != null ? UiVictoryAudio.Instance.VictoryCount : 0;
             Require(duel.HasRequiredBindings, duel.MissingBindingReason);
             Require(ui.ledgerAnchor != null && ui.rearDoorAnchor != null && ui.rearExitAnchor != null && ui.storyAnchors != null,
                 "Stage12 ledger/rear-door/rear-exit anchors must be installed first.");
@@ -189,6 +205,8 @@ public static class Stage12StoryPlaythrough
             Application.logMessageReceived += OnLog;
             EditorApplication.update += Tick;
             InputSystem.onAfterUpdate += FeedPracticeMouse;
+            InputSystem.onAfterUpdate += FeedEpilogueClick;
+            InputSystem.onAfterUpdate += FeedResultClick;
             EditorApplication.playModeStateChanged += VerificationPlayState;
             AssemblyReloadEvents.beforeAssemblyReload += VerificationReload;
             Call("StartGame");
@@ -283,6 +301,10 @@ public static class Stage12StoryPlaythrough
                     if (View == "Dialogue") { AdvanceSpokenLine(); return; }
                     if (View != "Defeat") return;
                     CloseDialogueObservation(); Capture("Failure_" + battle);
+                    SetPhase("FailureCapture");
+                    break;
+                case "FailureCapture":
+                    if (Time.frameCount < phaseFrame + 4) return;
                     Call("Restart", false); input.enabled = false;
                     Check(duel.Stage == battle && player.Health == player.MaxHealth && duel.IsCombatActive,
                         battle + " result retry restores only this battle at full player health");
@@ -395,17 +417,101 @@ public static class Stage12StoryPlaythrough
                     Capture("10_IndependentEpilogue"); SetPhase("Epilogue");
                     break;
                 case "Epilogue":
+                    if (View == "Epilogue" && EditorApplication.timeSinceStartup - epilogueBegan >= 1.5d
+                        && !epilogueGuardChecked)
+                    {
+                        epilogueGuardChecked = true;
+                        Check(epilogueClickPhase >= 2, "An early held mouse press cannot skip the first-second input guard");
+                    }
                     if (View == "Epilogue" && EditorApplication.timeSinceStartup - epilogueBegan >= 1.6d
                         && !report.screenshots.Any(s => s.path.EndsWith("10b_EpilogueVisible.png", StringComparison.Ordinal)))
                         Capture("10b_EpilogueVisible");
+                    if (View == "Epilogue" && EditorApplication.timeSinceStartup - epilogueBegan >= 8d
+                        && !report.screenshots.Any(s => s.path.EndsWith("10c_EpilogueHeldTitle.png", StringComparison.Ordinal)))
+                    {
+                        var epilogueLayer = ui.GetComponentsInChildren<RectTransform>(true).FirstOrDefault(r => r.name == "Epilogue");
+                        Require(epilogueLayer != null, "Epilogue view missing");
+                        Check(((UnityEngine.UI.Text)Get(ui, "epilogueTitle")).color.a >= .99f,
+                            "Epilogue title remains visible while waiting for the click");
+                        Check(Mathf.Abs(((UnityEngine.UI.Text)Get(ui, "epilogueTitle")).rectTransform.anchoredPosition.x) < .01f,
+                            "Epilogue title is horizontally centered");
+                        Check(!epilogueLayer.GetComponentsInChildren<UnityEngine.UI.Text>(true)
+                            .Any(t => t.text.Contains("AI 辅助制作")),
+                            "Epilogue has no AI assistance credit");
+                        Capture("10c_EpilogueHeldTitle");
+                    }
+                    if (View == "Epilogue" && EditorApplication.timeSinceStartup - epilogueBegan >= 17d
+                        && !epilogueLoopChecked)
+                    {
+                        epilogueLoopChecked = true;
+                        Check(UiVictoryAudio.Instance != null && UiVictoryAudio.Instance.VictoryCount == victoryCountAtStart + 1
+                            && UiVictoryAudio.Instance.VictoryPlaying,
+                            "Epilogue remains open beyond the 16-second Victory B clip with one looping music cue");
+                    }
                     if (View != "Victory") return;
                     report.epilogueSeconds = (float)(EditorApplication.timeSinceStartup - epilogueBegan);
-                    Check(report.epilogueSeconds >= 2.5f, "Independent epilogue remains visible before victory settlement");
+                    Check(epilogueGuardChecked && epilogueClickPhase >= 6 && report.epilogueSeconds >= 18f,
+                        "Independent epilogue waits for a new click after the music loop and ignores a double-click");
                     report.resultText = ((UnityEngine.UI.Text)Get(ui, "victoryStats")).text;
-                    Capture("11_Victory"); SetPhase("ResultCapture");
+                    Check(report.resultText.Contains("战斗用时  " + Mathf.RoundToInt((float)Get(ui, "completedFightLength")) + " 秒"),
+                        "Victory statistics use the battle duration frozen at final departure");
+                    SetPhase("ResultCapture");
                     break;
                 case "ResultCapture":
-                    if (Time.frameCount >= phaseFrame + 4) Finish();
+                    if (age < .75d) return;
+                    if (!victoryScreenshotRequested)
+                    {
+                        victoryScreenshotRequested = true;
+                        Capture("11_Victory");
+                        phaseFrame = Time.frameCount;
+                        return;
+                    }
+                    if (Time.frameCount < phaseFrame + 4) return;
+                    var victoryFade = (UnityEngine.CanvasGroup)Get(ui, "victoryFade");
+                    Check(victoryFade.alpha >= .99f && victoryFade.blocksRaycasts
+                        && !((UnityEngine.UI.Image)Get(ui, "resultCurtain")).gameObject.activeSelf,
+                        "Victory result finishes its fade-in with clickable buttons");
+                    Check(UiVictoryAudio.Instance != null && !UiVictoryAudio.Instance.VictoryPlaying,
+                        "Victory music has fully faded before result interaction");
+                    var resultLayer = ui.GetComponentsInChildren<RectTransform>(true).FirstOrDefault(r => r.name == "Victory");
+                    Require(resultLayer != null, "Victory view missing");
+                    Check(!resultLayer.GetComponentsInChildren<UnityEngine.UI.Text>(true)
+                        .Any(t => t.text.Contains("AI 辅助制作")),
+                        "Victory result has no AI assistance credit");
+                    var defeatLayer = ui.GetComponentsInChildren<RectTransform>(true).FirstOrDefault(r => r.name == "Defeat");
+                    Check(defeatLayer != null && !defeatLayer.GetComponentsInChildren<UnityEngine.UI.Text>(true)
+                        .Any(t => t.text.Contains("AI 辅助制作")),
+                        "Defeat result has no AI assistance credit");
+                    var buttons = resultLayer.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+                    var replay = buttons.FirstOrDefault(b => b.name.Contains("再玩一次"));
+                    var title = buttons.FirstOrDefault(b => b.name.Contains("回到标题"));
+                    Require(replay != null && title != null, "Victory result buttons missing");
+                    Check(PointerHits(replay) && PointerHits(title), "Victory buttons receive the top UI raycast");
+                    resultClickTarget = replay;
+                    resultClickPhase = 0;
+                    SetPhase("ResultReplayPointer");
+                    break;
+                case "ResultReplayPointer":
+                    if (View != "Play") return;
+                    Check(resultClickPhase >= 2 && Part == "Road" && duel.Stage == DuelEncounter.EncounterStage.Arrival,
+                        "Mouse click on Replay resets the story and encounter");
+                    Call("ShowVictory");
+                    resultClickTarget = ui.GetComponentsInChildren<UnityEngine.UI.Button>(true)
+                        .First(b => b.name.Contains("回到标题") && b.transform.parent.name == "Victory");
+                    resultClickPhase = 0;
+                    SetPhase("ResultTitlePointer");
+                    break;
+                case "ResultTitlePointer":
+                    if (View != "Title") return;
+                    Check(resultClickPhase >= 2, "Mouse click on Return to Title opens the formal main menu");
+                    var titleLayer = ui.GetComponentsInChildren<RectTransform>(true).First(r => r.name == "Title");
+                    Check(!titleLayer.GetComponentsInChildren<UnityEngine.UI.Text>(true)
+                        .Any(t => t.text.Contains("AI 辅助制作"))
+                        && titleLayer.GetComponentsInChildren<UnityEngine.UI.RawImage>(true)
+                            .Any(i => i.name == "Art 5" && i.texture != null),
+                        "Title keeps only the lower-left illustrated AI credit");
+                    Capture("12_TitleSingleCredit");
+                    Finish();
                     break;
             }
         }
@@ -555,6 +661,41 @@ public static class Stage12StoryPlaythrough
         InputState.Change(Mouse.current.delta, new Vector2(16f, 0f));
         lastLookInputFrame = Time.frameCount;
         practice.injectedDynamicFrames++;
+    }
+    static void FeedEpilogueClick()
+    {
+        if (!report.active || InputState.currentUpdateType != InputUpdateType.Dynamic || Mouse.current == null
+            || report.phase != "Epilogue" || View != "Epilogue" || epilogueClickPhase >= 7) return;
+        double age = EditorApplication.timeSinceStartup - epilogueBegan;
+        if (epilogueClickPhase == 0 && age < .2d || epilogueClickPhase == 1 && age < 1.2d
+            || epilogueClickPhase == 2 && age < 18d) return;
+        var state = new MouseState { position = Mouse.current.position.ReadValue() }
+            .WithButton(MouseButton.Left, epilogueClickPhase == 0 || epilogueClickPhase == 3 || epilogueClickPhase == 5);
+        InputState.Change(Mouse.current, state);
+        epilogueClickPhase++;
+    }
+    static bool PointerHits(Button button)
+    {
+        if (EventSystem.current == null) return false;
+        Canvas.ForceUpdateCanvases();
+        var pointer = new PointerEventData(EventSystem.current)
+        {
+            position = RectTransformUtility.WorldToScreenPoint(null, button.transform.position)
+        };
+        var hits = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointer, hits);
+        return hits.Count > 0 && hits[0].gameObject.transform.IsChildOf(button.transform);
+    }
+    static void FeedResultClick()
+    {
+        if (!report.active || InputState.currentUpdateType != InputUpdateType.Dynamic || Mouse.current == null
+            || resultClickTarget == null || resultClickPhase >= 2
+            || report.phase != "ResultReplayPointer" && report.phase != "ResultTitlePointer") return;
+        if (report.phase == "ResultTitlePointer" && EditorApplication.timeSinceStartup - phaseAt < .85d) return;
+        Vector2 position = RectTransformUtility.WorldToScreenPoint(null, resultClickTarget.transform.position);
+        var state = new MouseState { position = position }.WithButton(MouseButton.Left, resultClickPhase == 0);
+        InputState.Change(Mouse.current, state);
+        resultClickPhase++;
     }
     static void RecoverLookInput()
     {
@@ -730,7 +871,12 @@ public static class Stage12StoryPlaythrough
     static void Capture(string name)
     {
         string path = Path.Combine(report.outputFolder, name + ".png");
-        ScreenCapture.CaptureScreenshot(path);
+        var pixels = ScreenCapture.CaptureScreenshotAsTexture();
+        if (pixels != null)
+        {
+            File.WriteAllBytes(path, pixels.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(pixels);
+        }
         report.screenshots.Add(new Screenshot { path = path, requestedFrame = Time.frameCount });
     }
     static void SetPhase(string phase)
@@ -769,7 +915,7 @@ public static class Stage12StoryPlaythrough
     {
         if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
         report.runtimeErrors++;
-        if (report.failures.Count < 20) report.failures.Add(message);
+        if (report.failures.Count < 20) report.failures.Add(message + "\n" + stack);
     }
     static void Fail(string reason) { report.failures.Add(reason); Finish(); }
     static void VerificationPlayState(PlayModeStateChange state)
@@ -826,6 +972,8 @@ public static class Stage12StoryPlaythrough
     {
         EditorApplication.update -= Tick; Application.logMessageReceived -= OnLog;
         InputSystem.onAfterUpdate -= FeedPracticeMouse;
+        InputSystem.onAfterUpdate -= FeedEpilogueClick;
+        InputSystem.onAfterUpdate -= FeedResultClick;
         EditorApplication.playModeStateChanged -= VerificationPlayState;
         AssemblyReloadEvents.beforeAssemblyReload -= VerificationReload;
         if (duel != null) duel.StageChanged -= OnBattleStageChanged;

@@ -1,5 +1,7 @@
 # 红尘客栈：Codex 接手入口
 
+2026-11-18 后门外掩护阶段新增屋内脚步和用户选定的 `SwordBattle2.wav` 远处交手层；原件、处理版与触发说明见 `Docs/RescueCoverAudioIntegration.md`。后续修改此段须保留真实战斗音效的事件触发，不把远处录音当作命中判定。
+
 当前合并工作树为 `C:/Users/東壹/Documents/Codex/HongChenKeZhan_merged`，分支 `integrate/stage12-audio-v6`，基于本地玩法快照 `709d2e9` 和队友交付 `ad92f44`。先读 `Docs/Delivery/2026-11-18/HANDOFF.md`、`README_开始试玩.md`、`ProjectSettings/ProjectVersion.txt`，再检查 Git 状态和 Unity 场景。交接文档所述的 GitHub 分支与音频检查是合并前记录。
 前门行为更新：从第一段开战到第三段获胜，`DuelEncounter` 通过 `HoldOpenForEncounter` 保持前门开启，覆盖战间对白、回援及失败重试。结束或重开后恢复近距离感应。下文“离开后关闭”仅适用于感应模式。
 
