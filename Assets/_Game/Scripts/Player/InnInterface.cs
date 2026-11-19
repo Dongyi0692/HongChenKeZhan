@@ -11,7 +11,7 @@ namespace FengChenInn
     [DefaultExecutionOrder(10010)]
     public sealed class InnInterface : MonoBehaviour
     {
-        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat, Ledger, Epilogue, Prologue }
+        private enum View { Title, Play, Tutorial, Dialogue, Pause, Settings, Victory, Defeat, Ledger, Epilogue, Prologue, Credits }
         private enum StoryPart { Road, Hall, TutorialFight, EliteArriving, EliteFight, Departure, ReturnToHelp, JointFight, Finished, AwaitSentry, Practice, FinalDeparture }
         private enum PendingBattle { None, Tutorial, Elite, Rescue }
 
@@ -39,6 +39,9 @@ namespace FengChenInn
         private static readonly Vector2 TopLeft = new(0, 1), Top = new(.5f, 1), TopRight = new(1, 1);
         private static readonly Vector2 Center = new(.5f, .5f), Bottom = new(.5f, 0), BottomLeft = Vector2.zero;
         private const string Pref = "FengChenInn.UI.";
+        private const float CreditsReadSeconds = 4f;
+        private const float CreditsFadeInSeconds = .5f;
+        private const float CreditsFadeOutSeconds = .8f;
 
         private static readonly (int width, int height)[] ResolutionOptions =
             { (1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160) };
@@ -63,7 +66,7 @@ namespace FengChenInn
         private UnityEngine.UI.Text warningTitle, warningAction, warningDirection, hintText, speaker, dialogue, pageCount, qualityText, resolutionText, fullscreenText;
         private UnityEngine.UI.Text shortLine, victoryStats, defeatStats, tutorialControls, lockStatus, objectiveDirection;
         private UnityEngine.UI.Image epilogueShade;
-        private UnityEngine.UI.Image epilogueArt, epilogueBlackout, resultCurtain;
+        private UnityEngine.UI.Image epilogueArt, epilogueBlackout, creditsCurtain, resultCurtain;
         private UnityEngine.UI.Image epilogueRule;
         private UnityEngine.UI.Text epilogueTitle;
         private CanvasGroup victoryFade;
@@ -72,6 +75,7 @@ namespace FengChenInn
         private readonly UnityEngine.UI.Image[] settingsTabBrushes = new UnityEngine.UI.Image[4];
         private readonly UnityEngine.UI.Text[] settingsTabLabels = new UnityEngine.UI.Text[4];
         private float epilogueStartedAt, epilogueTransitionAt, victoryShownAt, completedFightLength;
+        private float creditsStartedAt, creditsFadeStartedAt;
         private bool epilogueTransitioning, epilogueMouseWasDown;
         private int coverLineIndex;
         private float nextCoverLineAt;
@@ -156,6 +160,7 @@ namespace FengChenInn
             BuildResult(true);
             BuildResult(false);
             BuildEpilogue();
+            BuildCredits();
             resultCurtain = Paint(Fill(root, "结算淡入黑场"), Color.black, true);
             resultCurtain.gameObject.SetActive(false);
             initialized = true;
@@ -185,6 +190,11 @@ namespace FengChenInn
             if (view == View.Epilogue)
             {
                 UpdateEpilogue();
+                return;
+            }
+            if (view == View.Credits)
+            {
+                UpdateCredits();
                 return;
             }
             if (view == View.Ledger)
@@ -467,7 +477,8 @@ namespace FengChenInn
             }
             foreach (var pair in views) pair.Value.gameObject.SetActive(pair.Key == next);
             bool play = next == View.Play;
-            fighter.SetDialoguePose(next == View.Dialogue || next == View.Ledger || next == View.Epilogue);
+            bool closingView = next == View.Epilogue || next == View.Credits;
+            fighter.SetDialoguePose(next == View.Dialogue || next == View.Ledger || closingView);
             Time.timeScale = play ? 1f : 0f;
             input.enabled = play;
             fighter.ClearInput();
@@ -477,7 +488,7 @@ namespace FengChenInn
             if (orbit != null)
             {
                 if (!play) orbit.ClearTargetLock();
-                orbit.enabled = !titleView && next != View.Epilogue;
+                orbit.enabled = !titleView && !closingView;
                 if (play) orbit.ResumeFollow();
             }
             if (titleView && sceneCamera != null)
@@ -1135,11 +1146,37 @@ namespace FengChenInn
             {
                 epilogueTransitioning = true;
                 epilogueTransitionAt = Time.unscaledTime;
-                uiVictoryAudio.FadeOutVictory(1f);
             }
             if (!epilogueTransitioning) return;
             float fade = Mathf.SmoothStep(0f, 1f, Time.unscaledTime - epilogueTransitionAt);
             SetAlpha(epilogueBlackout, fade);
+            if (fade >= 1f) BeginCredits();
+        }
+
+        private void BeginCredits()
+        {
+            creditsStartedAt = Time.unscaledTime;
+            creditsFadeStartedAt = -1f;
+            SetAlpha(creditsCurtain, 1f);
+            Show(View.Credits);
+        }
+
+        private void UpdateCredits()
+        {
+            float now = Time.unscaledTime;
+            float age = now - creditsStartedAt;
+            if (age < CreditsFadeInSeconds + CreditsReadSeconds)
+            {
+                SetAlpha(creditsCurtain, 1f - Mathf.SmoothStep(0f, 1f, age / CreditsFadeInSeconds));
+                return;
+            }
+            if (creditsFadeStartedAt < 0f)
+            {
+                creditsFadeStartedAt = now;
+                uiVictoryAudio.FadeOutVictory(CreditsFadeOutSeconds);
+            }
+            float fade = Mathf.SmoothStep(0f, 1f, (now - creditsFadeStartedAt) / CreditsFadeOutSeconds);
+            SetAlpha(creditsCurtain, fade);
             if (fade >= 1f) ShowVictory();
         }
 
@@ -1449,6 +1486,32 @@ namespace FengChenInn
         private void BuildLedger()
         {
             var layer = CreateView(View.Ledger);
+            var readingArt = Resources.Load<Texture2D>("UIArt/LedgerReading");
+            if (readingArt != null)
+            {
+                Paint(Fill(layer, "阅读暗场"), new Color32(16, 12, 10, 255), true);
+                var page = Fill(layer, "账本阅读图");
+                var aspect = page.gameObject.AddComponent<UnityEngine.UI.AspectRatioFitter>();
+                aspect.aspectRatio = (float)readingArt.width / readingArt.height;
+                aspect.aspectMode = UnityEngine.UI.AspectRatioFitter.AspectMode.FitInParent;
+                var art = page.gameObject.AddComponent<UnityEngine.UI.RawImage>();
+                art.texture = readingArt;
+                art.raycastTarget = false;
+
+                // Keep the clickable area on the painted key prompt at any aspect ratio.
+                var dismiss = Fill(page, "合上账本");
+                dismiss.anchorMin = new Vector2(.55f, .22f);
+                dismiss.anchorMax = new Vector2(.64f, .275f);
+                dismiss.offsetMin = dismiss.offsetMax = Vector2.zero;
+                var close = dismiss.gameObject.AddComponent<UnityEngine.UI.Button>();
+                close.targetGraphic = Paint(dismiss, Color.clear, true);
+                close.transition = UnityEngine.UI.Selectable.Transition.None;
+                UiButtonSound.Bind(close);
+                close.onClick.AddListener(FinishReadingLedger);
+                Label(page, InnStoryScript.LedgerObservation, 21, Paper, Bottom,
+                    new Vector2(0, 44), new Vector2(1050, 35), TextAnchor.MiddleCenter);
+                return;
+            }
             Paint(Fill(layer, "阅读暗场"), new Color(.025f, .02f, .018f, .88f), true);
             var book = Place(layer, "展开的账本", Center, Center, new Vector2(0, 32), new Vector2(1120, 646));
             Paint(book, new Color32(87, 61, 39, 255));
@@ -1762,6 +1825,26 @@ namespace FengChenInn
             SetAlpha(epilogueArt, 0f);
             SetAlpha(epilogueTitle, 0f);
             SetAlpha(epilogueRule, 0f);
+        }
+
+        private void BuildCredits()
+        {
+            var layer = CreateView(View.Credits);
+            Paint(Fill(layer, "制作名单暗场"), Color.black, true);
+            var art = Paint(Fill(layer, "制作名单"), Color.white);
+            art.sprite = Resources.Load<Sprite>("UIArt/CreditsPage");
+            art.preserveAspect = true;
+            if (art.sprite == null)
+            {
+                art.sprite = epilogueArt.sprite;
+                if (art.sprite == null) art.enabled = false;
+                Paint(Fill(layer, "制作名单底色"), new Color(0f, 0f, 0f, .55f));
+                Label(layer, "制作名单", 52, UiIvory, Center, new Vector2(0, 144),
+                    new Vector2(600, 72), TextAnchor.MiddleCenter, display: true);
+                Label(layer, "程序　辰埃\n美术　于陈熙\n策划　東壹", 38, UiIvory, Center,
+                    new Vector2(0, -5), new Vector2(600, 210), TextAnchor.MiddleCenter, display: true);
+            }
+            creditsCurtain = Paint(Fill(layer, "制作名单转场黑场"), Color.black, true);
         }
 
         private void TitleBackdrop(RectTransform layer)
