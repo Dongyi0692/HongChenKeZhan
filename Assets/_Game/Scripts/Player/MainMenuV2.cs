@@ -17,7 +17,7 @@ public sealed class MainMenuV2 : MonoBehaviour {
     bool seen, leaving;
     Texture2D glowTexture;
     Sprite glowSprite;
-    public void Build(Action start, Action settings, Action quit) {
+    public void Build(Action start, Action settings, Action quit, Font subtitleFont) {
         var bg = new GameObject("Menu Letterbox",typeof(RectTransform),typeof(Image));
         bg.transform.SetParent(transform,false); var br=(RectTransform)bg.transform;
         br.anchorMin=Vector2.zero;br.anchorMax=Vector2.one;br.offsetMin=br.offsetMax=Vector2.zero;
@@ -28,7 +28,7 @@ public sealed class MainMenuV2 : MonoBehaviour {
         Action[] actions={start,settings,quit};
         AddArt(0, 0, 0, 1672, 941);
         AddArt(1, 0, 0, 1672, 941);
-        AddArt(2, 150, 83, 272, 33);
+        AddSubtitle(subtitleFont);
         AddArt(3, 83, 151, 420, 148);
         AddArt(4, 111, 339, 364, 42);
         AddArt(5, 129, 846, 307, 35);
@@ -55,6 +55,25 @@ public sealed class MainMenuV2 : MonoBehaviour {
     void AddArt(int id,float x,float y,float w,float h){
         var im=Art(id,x,y,w,h);
         if(id>1){var g=im.gameObject.AddComponent<CanvasGroup>();artwork.Add(g);delays.Add(id==3?.45f:.7f);}
+    }
+    void AddSubtitle(Font font) {
+        var subtitle = new GameObject("主菜单副标题", typeof(RectTransform), typeof(UnityEngine.UI.Text), typeof(CanvasGroup));
+        var rect = subtitle.GetComponent<RectTransform>();
+        rect.SetParent(board, false);
+        rect.anchorMin = rect.anchorMax = new Vector2(0, 1);
+        rect.anchoredPosition = new Vector2(286, -99.5f);
+        rect.sizeDelta = new Vector2(272, 33);
+
+        var label = subtitle.GetComponent<UnityEngine.UI.Text>();
+        label.font = font;
+        label.fontSize = 26;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.color = new Color32(230, 197, 151, 255);
+        label.text = "红尘客栈 / 武侠小品";
+        label.raycastTarget = false;
+
+        artwork.Add(subtitle.GetComponent<CanvasGroup>());
+        delays.Add(.7f);
     }
     void AddButton(int normal,int hover,float x,float y,float w,float h,Action action){
         var im=Art(normal,x,y,w,h);im.raycastTarget=true;

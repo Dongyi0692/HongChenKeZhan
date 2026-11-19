@@ -1399,7 +1399,7 @@ namespace FengChenInn
         private void BuildTitle()
         {
             var layer = CreateView(View.Title);
-            layer.gameObject.AddComponent<MainMenuV2>().Build(BeginStoryIntro, OpenSettings, Quit);
+            layer.gameObject.AddComponent<MainMenuV2>().Build(BeginStoryIntro, OpenSettings, Quit, titleFont);
         }
 
         private void BuildTutorial()
